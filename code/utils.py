@@ -1,3 +1,6 @@
+import numpy as np
+import xarray as xr
+
 ################
 # Cities
 ################
@@ -8,5 +11,4 @@ city_list = {
     "denver": [39.7392, -104.985],
     "nyc": [40.712778, -74.006111],
     "sanfrancisco": [37.7775, -122.416389],
-    #"champaign": [40.115, -88.272778],
 }
