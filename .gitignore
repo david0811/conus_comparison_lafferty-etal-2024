@@ -1,4 +1,5 @@
 *.qsub
+*.out
 .ipynb_checkpoints/
 __pycache__/
 data/
