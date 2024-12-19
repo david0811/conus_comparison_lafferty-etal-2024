@@ -3,4 +3,5 @@
 .ipynb_checkpoints/
 __pycache__/
 data/
-code/logs/
+scripts/logs/ 
+scripts/old/
