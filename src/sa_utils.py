@@ -281,6 +281,33 @@ def compute_dsc_uc(ds_loca, ds_gard, ds_star, var_name):
     return dsc_uc
 
 
+def compute_tot_uc(ds_loca, ds_gard, ds_star, var_name):
+    """
+    Computes total uncertainty (full range).
+    Need to do this in stages since we can't merge to full ensemble.
+    """
+    # Max of all ensembles
+    loca_max = ds_loca[var_name].max(dim=["member", "gcm", "ssp"])
+    gard_max = ds_gard[var_name].max(dim=["member", "gcm", "ssp"])
+    star_max = ds_star[var_name].max(dim=["member", "gcm", "ssp"])
+    ens_max = xr.concat([loca_max, gard_max, star_max], dim="ensemble").max(
+        dim="ensemble"
+    )
+
+    # Min of all ensembles
+    loca_min = ds_loca[var_name].min(dim=["member", "gcm", "ssp"])
+    gard_min = ds_gard[var_name].min(dim=["member", "gcm", "ssp"])
+    star_min = ds_star[var_name].min(dim=["member", "gcm", "ssp"])
+    ens_min = xr.concat([loca_min, gard_min, star_min], dim="ensemble").min(
+        dim="ensemble"
+    )
+
+    # Compute total uncertainty
+    tot_uc = ens_max - ens_min
+
+    return tot_uc
+
+
 def uc_all(
     metric_id,
     regrid_method,
@@ -334,6 +361,9 @@ def uc_all(
             ssp="historical"
         )
 
+    # Compute total uncertainty
+    tot_uc = compute_tot_uc(ds_loca, ds_gard, ds_star, var_name)
+
     # Compute GCM uncertainty
     gcm_uc = compute_gcm_uc(ds_loca, ds_gard, ds_star, var_name)
 
@@ -351,7 +381,8 @@ def uc_all(
     ssp_uc = ssp_uc.rename("ssp_uc")
     iv_uc = iv_uc.rename("iv_uc")
     dsc_uc = dsc_uc.rename("dsc_uc")
-    uc = xr.merge([gcm_uc, ssp_uc, iv_uc, dsc_uc])
+    tot_uc = tot_uc.rename("tot_uc")
+    uc = xr.merge([gcm_uc, ssp_uc, iv_uc, dsc_uc, tot_uc])
 
     if return_metric:
         return uc, ds_loca, ds_star, ds_gard

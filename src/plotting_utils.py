@@ -6,6 +6,7 @@ import pandas as pd
 import xarray as xr
 from matplotlib.lines import Line2D
 
+from utils import gard_gcms
 from utils import roar_data_path as project_data_path
 
 ssp_colors = {
@@ -32,7 +33,7 @@ def plot_uc_map(
     fig=None,
     axs=None,
     regrid_method="nearest",
-    norm=True,
+    norm="total",
     cbar=True,
     title="auto",
 ):
@@ -40,8 +41,14 @@ def plot_uc_map(
     file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{return_period}rl_{regrid_method}.nc"
     uc = xr.open_dataset(file_path)
 
+    # Mask out locations without all three ensembles
+    mask = uc.to_array().sum(dim="variable", skipna=False) >= 0.0
+    uc = uc.where(mask)
+
     # Normalize
-    if norm:
+    if norm == "total":
+        uc_plot = uc / uc["tot_uc"]
+    elif norm == "relative":
         uc_plot = uc / uc.to_array().sum(dim="variable", skipna=False)
     else:
         uc_plot = uc.copy()
@@ -118,7 +125,9 @@ def plot_uc_map(
 
     # Cbar
     if cbar:
-        if norm:
+        if norm == "total":
+            cbar_label = "Fraction of total range [%]"
+        elif norm == "relative":
             cbar_label = "Relative uncertainty [%]"
         else:
             cbar_label = f"Absolute uncertainty {cbar_labels[metric_id]}"
@@ -204,6 +213,12 @@ def plot_response_differences(df, plot_col, xlabel, ax=None, min_members=5):
                     c=ssp_colors[ssp],
                     s=100,
                 )
+                ax.plot(
+                    plot_df[plot_col],
+                    [idx] * len(plot_df),
+                    linestyle="-",
+                    color=ssp_colors[ssp],
+                )
                 idx += 1
                 ylabels.append(f"{ensemble}\n{ssp} ({len(plot_df)})")
 
@@ -231,6 +246,17 @@ def plot_scenario_differences(df, plot_col, xlabel, ax=None, min_members=5):
     for ensemble in ensembles:
         # Skip ensembles with only 1 SSP
         if len(df[df["ensemble"] == ensemble]["ssp"].unique()) > 1:
+            # Plot line connecting values
+            df_sel = df[df["ensemble"] == ensemble]
+            plot_df = pd.DataFrame(df_sel.groupby("ssp")[plot_col].mean())
+            ax.plot(
+                plot_df[plot_col],
+                [idx] * len(plot_df),
+                linestyle="-",
+                color="darkgray",
+                zorder=1,
+            )
+            # Plot each value
             for ssp in ssps:
                 df_sel = df[(df["ensemble"] == ensemble) & (df["ssp"] == ssp)]
                 ax.scatter(
@@ -238,6 +264,7 @@ def plot_scenario_differences(df, plot_col, xlabel, ax=None, min_members=5):
                     x=df_sel[plot_col].mean(),
                     c=ssp_colors[ssp],
                     s=100,
+                    zorder=2,
                 )
             idx += 1
             ylabels.append(f"{ensemble}")
@@ -359,6 +386,12 @@ def plot_iv_differences(df, plot_col, xlabel, ax=None, min_members=5):
                             x=data[plot_col],
                             c=ssp_colors[ssp],
                             s=25,
+                        )
+                        ax.plot(
+                            data[plot_col],
+                            [idx] * len(data),
+                            linestyle="-",
+                            color=ssp_colors[ssp],
                         )
                     idx += 1
                     ylabels.append(f"{ensemble} {gcm} ({len(data)})")
@@ -557,3 +590,64 @@ def plot_decomp_qual(
     plot_ds_differences(df, plot_col, xlabel, ax=ax)
 
     plt.show()
+
+
+##########################
+# Simpler qualitative plot
+##########################
+def plot_all_boxplots(df, plot_col, xlabel, title, legend, ax=None):
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 6))
+
+    ensembles = df["ensemble"].unique()
+    ssps = df["ssp"].unique()
+
+    y_pos = []
+    y_counter = 0
+    y_labels = []
+
+    # Loop through ensembles
+    for ensemble in ensembles:
+        y_counter += 1
+        # Separate by GCMs for GARD-LENS
+        if ensemble == "GARD-LENS":
+            ssp = "ssp370"
+            for gcm in gard_gcms:
+                # Plot
+                df_sel = df[(df["ensemble"] == ensemble) & (df["gcm"] == gcm)]
+                plot_boxplot(
+                    df_sel, plot_col, [y_counter], ssp_colors[ssp], ax, lw=2
+                )
+                # Labels
+                y_labels.append(f"{ensemble}: {gcm}")
+                y_pos.append(y_counter)
+                y_counter += 1
+        else:
+            # Get SSPs to plot
+            ssps = df[df["ensemble"] == ensemble]["ssp"].unique()
+            y_labels.append(ensemble)
+            y_pos.append(y_counter + np.median(range(len(ssps))))
+            for ssp in ssps:
+                # Plot
+                df_sel = df[(df["ensemble"] == ensemble) & (df["ssp"] == ssp)]
+                plot_boxplot(
+                    df_sel, plot_col, [y_counter], ssp_colors[ssp], ax, lw=2
+                )
+                # Single labels
+                y_counter += 1
+
+    # Tidy
+    ax.set_yticks(y_pos, y_labels)
+    ax.grid(alpha=0.2)
+    ax.set_xlabel(xlabel)
+    ax.set_title(title, fontweight="bold")
+
+    # Legend
+    if legend:
+        legend_elements = [
+            Line2D(
+                [0], [0], color=ssp_colors[ssp], label=ssp_labels[ssp], lw=2
+            )
+            for ssp in ssp_colors.keys()
+        ]
+        ax.legend(handles=legend_elements)

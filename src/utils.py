@@ -4,6 +4,11 @@
 metric_ids = ["max_tasmax", "min_tasmin", "max_cdd", "max_hdd", "max_pr"]
 
 ################
+# GCM list
+################
+gard_gcms = ["CanESM5", "CESM2-LENS", "EC-Earth3"]
+
+################
 # Paths
 ################
 roar_code_path = "/storage/home/dcl5300/work/current_projects/conus_comparison_lafferty-etal-2024"
