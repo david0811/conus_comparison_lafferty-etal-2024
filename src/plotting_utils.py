@@ -43,15 +43,20 @@ def plot_uc_map(
 
     # Mask out locations without all three ensembles
     mask = uc.to_array().sum(dim="variable", skipna=False) >= 0.0
-    uc = uc.where(mask)
+    uc = uc.where(mask, drop=True)
 
     # Normalize
     if norm == "total":
-        uc_plot = uc / uc["tot_uc"]
+        uc["ssp_uc"] = uc["ssp_uc"] / uc["tot_uc"]
+        uc["gcm_uc"] = uc["gcm_uc"] / uc["tot_uc"]
+        uc["iv_uc"] = uc["iv_uc"] / uc["tot_uc"]
+        uc["dsc_uc"] = uc["dsc_uc"] / uc["tot_uc"]
     elif norm == "relative":
-        uc_plot = uc / uc.to_array().sum(dim="variable", skipna=False)
-    else:
-        uc_plot = uc.copy()
+        uc_tot = uc["ssp_uc"] + uc["gcm_uc"] + uc["iv_uc"] + uc["dsc_uc"]
+        uc["ssp_uc"] = uc["ssp_uc"] / uc_tot
+        uc["gcm_uc"] = uc["gcm_uc"] / uc_tot
+        uc["iv_uc"] = uc["iv_uc"] / uc_tot
+        uc["dsc_uc"] = uc["dsc_uc"] / uc_tot
 
     # Labels
     uc_labels = {
@@ -80,36 +85,68 @@ def plot_uc_map(
     if axs is None:
         fig, axs = plt.subplots(
             1,
-            4,
-            figsize=(10, 3),
+            5,
+            figsize=(12, 5),
             layout="constrained",
             subplot_kw=dict(projection=ccrs.LambertConformal()),
         )
 
     # Plot details
-    if norm:
-        vmin, vmax = 0.0, 50
+    if metric_id == "max_pr":
+        cmap = "Blues"
+        vmin = np.round(uc["tot_uc"].min().to_numpy(), decimals=-1)
+        vmax = np.round(uc["tot_uc"].quantile(0.95).to_numpy(), decimals=-1)
+    else:
+        cmap = "Oranges"
+        vmin = np.round(uc["tot_uc"].min().to_numpy(), decimals=0)
+        vmax = np.round(uc["tot_uc"].quantile(0.95).to_numpy(), decimals=0)
+
+    if norm is not None:
+        vmin_uc, vmax_uc = 0.0, 40
         scale_factor = 100.0
-        cmap = "YlGn"
+        cmap_uc = "YlGn"
     else:
         scale_factor = 1.0
-        vmin = 0.0
-        vmax = np.round(0.5 * uc_plot.max().to_array().max().to_numpy())
-        if metric_id == "max_pr":
-            cmap = "Blues"
-        else:
-            cmap = "Oranges"
+        vmin_uc = vmin
+        vmax_uc = vmax
+        cmap_uc = cmap
+
+    # First plot total uncertainty
+    ax = axs[0]
+    p = uc["tot_uc"].plot(
+        ax=ax,
+        levels=11,
+        add_colorbar=True,
+        vmin=vmin,
+        vmax=vmax,
+        cmap=cmap,
+        transform=ccrs.PlateCarree(),
+        cbar_kwargs={
+            "orientation": "horizontal",
+            "shrink": 0.9,
+            "label": f"Total range {cbar_labels[metric_id]}",
+        },
+    )
+    # Tidy
+    ax.coastlines()
+    gl = ax.gridlines(
+        draw_labels=False, x_inline=False, rotate_labels=False, alpha=0.2
+    )
+    ax.add_feature(cfeature.STATES, edgecolor="black", linewidth=0.5)
+    ax.add_feature(cfeature.BORDERS, edgecolor="black", linewidth=0.5)
+    ax.set_extent([-120, -73, 22, 51], ccrs.Geodetic())
+    ax.set_title("Total uncertainty", fontsize=12)
 
     # Loop through uncertainties
     for axi, uc_type in enumerate(list(uc_labels.keys())):
-        ax = axs[axi]
-        p = (scale_factor * uc_plot[uc_type]).plot(
+        ax = axs[axi + 1]
+        p = (scale_factor * uc[uc_type]).plot(
             ax=ax,
             levels=11,
             add_colorbar=False,
-            vmin=vmin,
-            vmax=vmax,
-            cmap=cmap,
+            vmin=vmin_uc,
+            vmax=vmax_uc,
+            cmap=cmap_uc,
             transform=ccrs.PlateCarree(),
         )
 
@@ -136,7 +173,7 @@ def plot_uc_map(
             p,
             orientation="horizontal",
             label=cbar_label,
-            ax=axs,
+            ax=axs[1:],
             pad=0.05,
             shrink=0.3,
         )
