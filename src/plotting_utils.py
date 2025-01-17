@@ -33,7 +33,7 @@ def plot_uc_map(
     fig=None,
     axs=None,
     regrid_method="nearest",
-    norm="total",
+    norm=None,
     cbar=True,
     title="auto",
 ):
@@ -46,17 +46,19 @@ def plot_uc_map(
     uc = uc.where(mask, drop=True)
 
     # Normalize
-    if norm == "total":
-        uc["ssp_uc"] = uc["ssp_uc"] / uc["tot_uc"]
-        uc["gcm_uc"] = uc["gcm_uc"] / uc["tot_uc"]
-        uc["iv_uc"] = uc["iv_uc"] / uc["tot_uc"]
-        uc["dsc_uc"] = uc["dsc_uc"] / uc["tot_uc"]
+    if norm == None:
+        pass
     elif norm == "relative":
         uc_tot = uc["ssp_uc"] + uc["gcm_uc"] + uc["iv_uc"] + uc["dsc_uc"]
         uc["ssp_uc"] = uc["ssp_uc"] / uc_tot
         uc["gcm_uc"] = uc["gcm_uc"] / uc_tot
         uc["iv_uc"] = uc["iv_uc"] / uc_tot
         uc["dsc_uc"] = uc["dsc_uc"] / uc_tot
+    else:
+        uc["ssp_uc"] = uc["ssp_uc"] / uc[norm]
+        uc["gcm_uc"] = uc["gcm_uc"] / uc[norm]
+        uc["iv_uc"] = uc["iv_uc"] / uc[norm]
+        uc["dsc_uc"] = uc["dsc_uc"] / uc[norm]
 
     # Labels
     uc_labels = {
@@ -82,6 +84,12 @@ def plot_uc_map(
         "min_tasmin": f"{return_period} year return level: annual minimum temperature",
     }
 
+    norm_labels = {
+        'uc_99w': '99% range',
+        'uc_95w': '95% range',
+        'uc_range': 'Total range'
+    }
+
     if axs is None:
         fig, axs = plt.subplots(
             1,
@@ -94,12 +102,12 @@ def plot_uc_map(
     # Plot details
     if metric_id == "max_pr":
         cmap = "Blues"
-        vmin = np.round(uc["tot_uc"].min().to_numpy(), decimals=-1)
-        vmax = np.round(uc["tot_uc"].quantile(0.95).to_numpy(), decimals=-1)
+        vmin = np.round(uc[norm].min().to_numpy(), decimals=-1)
+        vmax = np.round(uc[norm].quantile(0.95).to_numpy(), decimals=-1)
     else:
         cmap = "Oranges"
-        vmin = np.round(uc["tot_uc"].min().to_numpy(), decimals=0)
-        vmax = np.round(uc["tot_uc"].quantile(0.95).to_numpy(), decimals=0)
+        vmin = np.round(uc[norm].min().to_numpy(), decimals=0)
+        vmax = np.round(uc[norm].quantile(0.95).to_numpy(), decimals=0)
 
     if norm is not None:
         vmin_uc, vmax_uc = 0.0, 40
@@ -113,7 +121,7 @@ def plot_uc_map(
 
     # First plot total uncertainty
     ax = axs[0]
-    p = uc["tot_uc"].plot(
+    p = uc[norm].plot(
         ax=ax,
         levels=11,
         add_colorbar=True,
@@ -124,7 +132,7 @@ def plot_uc_map(
         cbar_kwargs={
             "orientation": "horizontal",
             "shrink": 0.9,
-            "label": f"Total range {cbar_labels[metric_id]}",
+            "label": f"{norm_labels[norm]} {cbar_labels[metric_id]}",
         },
     )
     # Tidy
@@ -162,12 +170,12 @@ def plot_uc_map(
 
     # Cbar
     if cbar:
-        if norm == "total":
-            cbar_label = "Fraction of total range [%]"
+        if norm is None:
+            cbar_label = f"Absolute uncertainty {cbar_labels[metric_id]}"
         elif norm == "relative":
             cbar_label = "Relative uncertainty [%]"
         else:
-            cbar_label = f"Absolute uncertainty {cbar_labels[metric_id]}"
+            cbar_label = "Fraction of total uncertainty [%]"
 
         fig.colorbar(
             p,
