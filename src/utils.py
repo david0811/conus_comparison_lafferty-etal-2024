@@ -1,7 +1,8 @@
 ################
 # Main metrics
 ################
-metric_ids = ["max_tasmax", "min_tasmin", "max_cdd", "max_hdd", "max_pr"]
+gev_metric_ids = ["max_tasmax", "min_tasmin", "max_cdd", "max_hdd", "max_pr"]
+trend_metric_ids = ["avg_tas", "sum_pr", "sum_hdd", "sum_cdd"]
 
 ################
 # GCM list

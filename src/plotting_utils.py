@@ -46,7 +46,7 @@ def plot_uc_map(
     uc = uc.where(mask, drop=True)
 
     # Normalize
-    if norm == None:
+    if norm is None:
         pass
     elif norm == "relative":
         uc_tot = uc["ssp_uc"] + uc["gcm_uc"] + uc["iv_uc"] + uc["dsc_uc"]
@@ -85,9 +85,9 @@ def plot_uc_map(
     }
 
     norm_labels = {
-        'uc_99w': '99% range',
-        'uc_95w': '95% range',
-        'uc_range': 'Total range'
+        "uc_99w": "99% range",
+        "uc_95w": "95% range",
+        "uc_range": "Total range",
     }
 
     if axs is None:
@@ -640,59 +640,132 @@ def plot_decomp_qual(
 ##########################
 # Simpler qualitative plot
 ##########################
-def plot_all_boxplots(df, plot_col, xlabel, title, legend, ax=None):
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(10, 6))
-
+def plot_boxplot_all(
+    df, plot_col, xlabel, title, ax=None, min_members=5, legend=True
+):
+    # Plot info
     ensembles = df["ensemble"].unique()
     ssps = df["ssp"].unique()
 
-    y_pos = []
-    y_counter = 0
-    y_labels = []
+    # Create a new figure and axis if none are provided
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(4, 8))
 
-    # Loop through ensembles
-    for ensemble in ensembles:
-        y_counter += 1
-        # Separate by GCMs for GARD-LENS
-        if ensemble == "GARD-LENS":
-            ssp = "ssp370"
-            for gcm in gard_gcms:
-                # Plot
-                df_sel = df[(df["ensemble"] == ensemble) & (df["gcm"] == gcm)]
-                plot_boxplot(
-                    df_sel, plot_col, [y_counter], ssp_colors[ssp], ax, lw=2
-                )
-                # Labels
-                y_labels.append(f"{ensemble}: {gcm}")
-                y_pos.append(y_counter)
-                y_counter += 1
-        else:
-            # Get SSPs to plot
-            ssps = df[df["ensemble"] == ensemble]["ssp"].unique()
-            y_labels.append(ensemble)
-            y_pos.append(y_counter + np.median(range(len(ssps))))
-            for ssp in ssps:
-                # Plot
-                df_sel = df[(df["ensemble"] == ensemble) & (df["ssp"] == ssp)]
-                plot_boxplot(
-                    df_sel, plot_col, [y_counter], ssp_colors[ssp], ax, lw=2
-                )
-                # Single labels
-                y_counter += 1
+    idx = 0
+    ylabels = []
+    yskip = []
 
-    # Tidy
-    ax.set_yticks(y_pos, y_labels)
-    ax.grid(alpha=0.2)
-    ax.set_xlabel(xlabel)
-    ax.set_title(title, fontweight="bold")
+    # Separate by SSPs first
+    for ssp in ssps:
+        # STAR-ESDM is separate
+        ensemble = "STAR-ESDM"
+        data = df[(df["ensemble"] == ensemble) & (df["ssp"] == ssp)]
+        if len(data) > 10:
+            # Separate
+            yskip.append(idx)
+            ylabels.append("")
+            idx += 1
+            # Plot
+            plot_boxplot(data, plot_col, [idx], ssp_colors[ssp], ax)
+            idx += 1
+            ylabels.append(f"{ensemble} ({len(data)})")
+
+        # Loop through 'large' ensembles
+        for ensemble in ["LOCA2", "GARD-LENS"]:
+            # Filter minimum members
+            df_sel = df[(df["ensemble"] == ensemble) & (df["ssp"] == ssp)]
+            min_filter = df_sel.groupby("gcm")[plot_col].count() >= min_members
+            if min_filter.sum() > 0:
+                # Add space
+                yskip.append(idx)
+                ylabels.append("")
+                idx += 1
+
+                # Loop through GCMs
+                gcms = min_filter[min_filter].index
+                for gcm in gcms:
+                    data = df_sel[df_sel["gcm"] == gcm]
+                    if len(data) > 10:
+                        plot_boxplot(
+                            data, plot_col, [idx], ssp_colors[ssp], ax
+                        )
+                    else:
+                        ax.scatter(
+                            y=[idx] * len(data),
+                            x=data[plot_col],
+                            c=ssp_colors[ssp],
+                            s=25,
+                        )
+                        ax.plot(
+                            data[plot_col],
+                            [idx] * len(data),
+                            linestyle="-",
+                            color=ssp_colors[ssp],
+                        )
+                    idx += 1
+                    ylabels.append(f"{ensemble} {gcm} ({len(data)})")
 
     # Legend
     if legend:
         legend_elements = [
             Line2D(
-                [0], [0], color=ssp_colors[ssp], label=ssp_labels[ssp], lw=2
+                [0],
+                [0],
+                color=ssp_colors[ssp],
+                marker="o",
+                markerfacecolor=ssp_colors[ssp],
+                markersize=8,
+                lw=2,
+                label=ssp_labels[ssp],
             )
             for ssp in ssp_colors.keys()
         ]
         ax.legend(handles=legend_elements)
+
+    # Tidy
+    ax.grid(alpha=0.2)
+    ax.set_xlabel(xlabel)
+    ax.set_title(title)
+    ax.set_yticks(
+        np.delete(np.arange(len(ylabels)), yskip),
+        np.delete(ylabels, yskip),
+        fontsize=10,
+    )
+
+
+def plot_city(
+    city,
+    metric_id,
+    return_period,
+    ax,
+    xlabel,
+    title,
+    legend,
+    regrid_method="nearest",
+    proj_slice="2050-2100",
+    hist_slice="1950-2014",
+    plot_diff=False,
+):
+    # Read
+    file_name = f"{city}_{metric_id}_{proj_slice}_{hist_slice}_{return_period}rl_{regrid_method}.csv"
+    df_all = pd.read_csv(
+        f"{project_data_path}/extreme_value/cities/loca_grid/{file_name}"
+    )
+
+    # Plot
+    plot_col = f"{return_period}yr_return_level"
+
+    if not plot_diff:
+        df_plot = df_all[df_all["ssp"] != "historical"]
+    else:
+        # TO DO
+        pass
+
+    plot_boxplot_all(
+        df_plot,
+        plot_col=plot_col,
+        xlabel=xlabel,
+        ax=ax,
+        legend=legend,
+        title=title,
+    )

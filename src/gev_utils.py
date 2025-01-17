@@ -386,7 +386,7 @@ def gev_fit_single(
 ###############################
 def get_unique_loca_metrics(metric_id):
     """
-    Return unique LOCA2 combinations for given  metric_id.
+    Return unique LOCA2 combinations for given metric_id.
     """
     # Read all
     files = glob(f"{project_data_path}/metrics/LOCA2/{metric_id}_*")
@@ -426,7 +426,7 @@ def gev_fit_all(metric_id, future_years=[2050, 2100], hist_years=[1950, 2014]):
     for index, row in df_loca.iterrows():
         # Get info
         gcm, member, ssp = row["gcm"], row["member"], row["ssp"]
-        years = [1950, 2014] if ssp == "historical" else future_years
+        years = hist_years if ssp == "historical" else future_years
 
         out = dask.delayed(gev_fit_single)(
             ensemble=ensemble,
@@ -450,7 +450,7 @@ def gev_fit_all(metric_id, future_years=[2050, 2100], hist_years=[1950, 2014]):
 
         # Fit for historical and ssp
         for ssp_id in ["historical", ssp]:
-            years = [1950, 2014] if ssp_id == "historical" else [2050, 2100]
+            years = hist_years if ssp == "historical" else future_years
             out = dask.delayed(gev_fit_single)(
                 ensemble=ensemble,
                 gcm=gcm,
@@ -476,7 +476,7 @@ def gev_fit_all(metric_id, future_years=[2050, 2100], hist_years=[1950, 2014]):
 
         # Do for historical and ssp
         for ssp_id in ["historical", ssp]:
-            years = [1950, 2014] if ssp_id == "historical" else [2050, 2100]
+            years = hist_years if ssp == "historical" else future_years
             out = dask.delayed(gev_fit_single)(
                 ensemble=ensemble,
                 gcm=gcm,
