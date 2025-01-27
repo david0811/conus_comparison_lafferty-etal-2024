@@ -1,3 +1,7 @@
+from glob import glob
+
+import pandas as pd
+
 ################
 # Main metrics
 ################
@@ -48,3 +52,30 @@ loca_gard_mapping = {
     "r9i1p1f1": "1161_09",
     "r10i1p1f1": "1181_10",
 }
+
+
+#################################
+# LOCA members
+#################################
+def get_unique_loca_metrics(metric_id, project_data_path=roar_data_path):
+    """
+    Return unique LOCA2 combinations for given metric_id.
+    """
+    # Read all
+    files = glob(f"{project_data_path}/metrics/LOCA2/{metric_id}_*")
+
+    # Extract all info
+    df = pd.DataFrame(columns=["gcm", "member", "ssp"])
+    for file in files:
+        _, _, gcm, member, ssp, _ = file.split("/")[-1].split("_")
+        df = pd.concat(
+            [
+                df,
+                pd.DataFrame(
+                    {"gcm": gcm, "member": member, "ssp": ssp}, index=[0]
+                ),
+            ]
+        )
+
+    # Return unique
+    return df.drop_duplicates().reset_index()

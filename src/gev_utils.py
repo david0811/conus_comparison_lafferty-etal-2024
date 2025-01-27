@@ -5,13 +5,12 @@ from glob import glob
 
 import dask
 import numpy as np
-import pandas as pd
 import xarray as xr
 from scipy import special
 from scipy.optimize import fsolve, minimize
 from scipy.stats import genextreme as gev
 
-from utils import loca_gard_mapping
+from utils import get_unique_loca_metrics, loca_gard_mapping
 from utils import roar_code_path as project_code_path
 from utils import roar_data_path as project_data_path
 
@@ -384,30 +383,6 @@ def gev_fit_single(
 ###############################
 # GEV fit across whole ensemble
 ###############################
-def get_unique_loca_metrics(metric_id):
-    """
-    Return unique LOCA2 combinations for given metric_id.
-    """
-    # Read all
-    files = glob(f"{project_data_path}/metrics/LOCA2/{metric_id}_*")
-
-    # Extract all info
-    df = pd.DataFrame(columns=["gcm", "member", "ssp"])
-    for file in files:
-        _, _, gcm, member, ssp, _ = file.split("/")[-1].split("_")
-        df = pd.concat(
-            [
-                df,
-                pd.DataFrame(
-                    {"gcm": gcm, "member": member, "ssp": ssp}, index=[0]
-                ),
-            ]
-        )
-
-    # Return unique
-    return df.drop_duplicates().reset_index()
-
-
 def gev_fit_all(metric_id, future_years=[2050, 2100], hist_years=[1950, 2014]):
     """
     Fits a GEV distribution to the entire meta-ensemble of outputs.
