@@ -1,6 +1,7 @@
 import os
 from glob import glob
 
+import arviz as az
 import dask
 import numpy as np
 import pandas as pd
@@ -100,9 +101,10 @@ def get_city_timeseries_all(
     metric_id,
     project_data_path=project_data_path,
 ):
-    """ """
+    """
+    Loop through all meta-ensemble members and calculate the city timeseries.
+    """
     # Check if done
-
     if os.path.exists(
         f"{project_data_path}/metrics/cities/{city}_{metric_id}.csv"
     ):
@@ -184,28 +186,21 @@ def get_city_timeseries_all(
 ###########################
 # Fitting Bayesian GEV
 ###########################
-def fit_bayesian_gev_single(
+def _fit_bayesian_gev(
     data,
-    info,
     loc_mu,
     loc_sigma,
     scale_sigma,
     store_results,
     years,
     stationary,
+    return_periods,
     shape_sigma=1,
     trend_mu=0,
     trend_sigma=5,
     n_draws=5000,
     n_tune=2000,
-    return_periods=[100],
-    project_data_path=project_data_path,
 ):
-    """ """
-
-    # Get data info
-    city, metric_id, ensemble, gcm, member, ssp = info
-
     # Define model
     if stationary:
         # Stationary model
@@ -264,42 +259,236 @@ def fit_bayesian_gev_single(
     with model:
         trace = pm.sample(
             draws=n_draws,
-            cores=1,
+            cores=3,
             chains=3,
             tune=n_tune,
             target_accept=0.98,
             nuts_sampler="blackjax",
             progressbar=False,
         )
-    # Store if desired
+
+    return trace
+
+
+def fit_bayesian_gev_single(
+    city,
+    metric_id,
+    ensemble,
+    gcm,
+    member,
+    ssp,
+    years,
+    stationary,
+    return_periods,
+    store_results=True,
+    project_data_path=project_data_path,
+    **kwargs,
+):
+    """
+    Fits the Bayesian GEV model to a selected city, ensemble, GCM, member, SSP, and years.
+    """
+
+    # Skip if done
     stationary_string = "stat" if stationary else "nonstat"
     store_name = f"{city}_{metric_id}_{ensemble}_{gcm}_{member}_{ssp}_{years[0]}-{years[1]}_{stationary_string}"
+    if os.path.exists(
+        f"{project_data_path}/extreme_value/cities/original_grid/bayes/{store_name}.nc",
+    ):
+        return None
+
+    # Read and select data
+    df = pd.read_csv(
+        f"{project_data_path}/metrics/cities/{city}_{metric_id}.csv"
+    )
+
+    df_sel = df[
+        (df["ensemble"] == ensemble)
+        & (df["gcm"] == gcm)
+        & (df["member"] == member)
+        & (df["ssp"] == ssp)
+        & (df["time"] >= years[0])
+        & (df["time"] <= years[1])
+    ]
+
+    # Skip invalid SSP-years combinations
+    if len(df_sel) == 0:
+        return None
+
+    _, var_id = metric_id.split("_")
+    data = df_sel[var_id].to_numpy()
+
+    # Set priors based on variable
+    if var_id == "tasmax":
+        loc_mu = 30.0
+        loc_sigma = 10.0
+        scale_sigma = 10.0
+    elif var_id == "tasmin":
+        loc_mu = -20.0
+        loc_sigma = 10.0
+        scale_sigma = 10.0
+    elif var_id == "pr":
+        loc_mu = 100.0
+        loc_sigma = 50.0
+        scale_sigma = 50.0
+
+    # Do the fit
+    trace = _fit_bayesian_gev(
+        data,
+        loc_mu,
+        loc_sigma,
+        scale_sigma,
+        store_results,
+        years,
+        stationary,
+        return_periods,
+        **kwargs,
+    )
+
+    # Re-run if convergence issues
+    count = 0
+    while (az.summary(trace)["r_hat"] > 1.01).all() and count <= 5:
+        # Re-run with perturbed priors
+        trace = _fit_bayesian_gev(
+            data,
+            loc_mu * np.random.uniform(0.9, 1.1),
+            loc_sigma * np.random.uniform(0.9, 1.1),
+            scale_sigma * np.random.uniform(0.9, 1.1),
+            store_results,
+            years,
+            stationary,
+            return_periods,
+            **kwargs,
+        )
+        count += 1
+
+    # Assign coords to attrs
+    trace.attrs["ensemble"] = ensemble
+    trace.attrs["gcm"] = gcm
+    trace.attrs["member"] = member
+    trace.attrs["ssp"] = ssp
+
+    # Store if desired
     if store_results:
         trace.to_netcdf(
             f"{project_data_path}/extreme_value/cities/original_grid/bayes/{store_name}.nc",
         )
+    else:
+        return trace
 
-    # Return CIs for return levels
-    return_level_columns = [f"{p}yr_return_level" for p in return_periods]
-    rl_quantiles = (
-        trace["posterior"][return_level_columns]
-        .quantile([0.025, 0.5, 0.957], dim=["chain", "draw"])
-        .to_dataframe()
-        .reset_index()
+
+def fit_bayesian_gev_ensemble(
+    city,
+    metric_id,
+    years,
+    stationary,
+    return_periods,
+    store_results=True,
+    project_data_path=project_data_path,
+    dask=True,
+    **kwargs,
+):
+    """
+    Fits the Bayesian GEV model to a selected city, all ensemble members, GCMs, SSPs
+    """
+    # Get unique combos
+    df = pd.read_csv(
+        f"{project_data_path}/metrics/cities/{city}_{metric_id}.csv"
     )
-    rl_mean = (
-        trace["posterior"][return_level_columns]
-        .mean(dim=["chain", "draw"])
-        .expand_dims(quantile=["mean"])
-        .to_dataframe()
-        .reset_index()
+    df = df.set_index(["ensemble", "gcm", "member", "ssp"]).sort_index()
+    combos = df.index.unique()
+
+    # Loop through
+    delayed = []
+    for combo in combos:
+        ensemble, gcm, member, ssp = combo
+        if dask:
+            tmp = dask.delayed(fit_bayesian_gev_single)(
+                city=city,
+                metric_id=metric_id,
+                ensemble=ensemble,
+                gcm=gcm,
+                member=member,
+                ssp=ssp,
+                years=years,
+                stationary=stationary,
+                return_periods=return_periods,
+                store_results=store_results,
+                project_data_path=project_data_path,
+                **kwargs,
+            )
+            delayed.append(tmp)
+        else:
+            print(f"{ensemble} {gcm} {member} {ssp}")
+            fit_bayesian_gev_single(
+                city=city,
+                metric_id=metric_id,
+                ensemble=ensemble,
+                gcm=gcm,
+                member=member,
+                ssp=ssp,
+                years=years,
+                stationary=stationary,
+                return_periods=return_periods,
+                store_results=store_results,
+                project_data_path=project_data_path,
+                **kwargs,
+            )
+
+    if dask:
+        _ = dask.compute(*delayed)
+
+
+def gather_bayesian_gev_results(
+    city,
+    metric_id,
+    return_periods,
+    project_data_path=project_data_path,
+):
+    """
+    Gathers all Bayesian GEV results for a selected city and metric, stores return levels in a dataframe.
+    """
+
+    # Get all fits
+    files = glob(
+        f"{project_data_path}/extreme_value/cities/original_grid/bayes/{city}_{metric_id}_*.nc"
     )
 
-    # Concat
-    df = pd.concat([rl_quantiles, rl_mean])
-    df["ensemble"] = ensemble
-    df["gcm"] = gcm
-    df["member"] = member
-    df["ssp"] = ssp
+    # Loop through all
+    df_out = []
+    for file in files:
+        # Read trace
+        trace = az.from_netcdf(file)
+        ensemble = trace.attrs["ensemble"]
+        gcm = trace.attrs["gcm"]
+        member = trace.attrs["member"]
+        ssp = trace.attrs["ssp"]
 
-    return df
+        conv_flag = (az.summary(trace)["r_hat"] < 1.01).all()
+
+        # Return CIs for return levels
+        return_level_columns = [f"{p}yr_return_level" for p in return_periods]
+        rl_quantiles = (
+            trace["posterior"][return_level_columns]
+            .quantile([0.025, 0.5, 0.957], dim=["chain", "draw"])
+            .to_dataframe()
+            .reset_index()
+        )
+        rl_mean = (
+            trace["posterior"][return_level_columns]
+            .mean(dim=["chain", "draw"])
+            .expand_dims(quantile=["mean"])
+            .to_dataframe()
+            .reset_index()
+        )
+
+        # Concat
+        df = pd.concat([rl_quantiles, rl_mean])
+        df["ensemble"] = ensemble
+        df["gcm"] = gcm
+        df["member"] = member
+        df["ssp"] = ssp
+        df["rhat_good"] = conv_flag
+
+        df_out.append(df)
+
+    return pd.concat(df_out)
