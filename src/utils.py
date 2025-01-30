@@ -9,9 +9,11 @@ gev_metric_ids = ["max_tasmax", "min_tasmin", "max_cdd", "max_hdd", "max_pr"]
 trend_metric_ids = ["avg_tas", "sum_pr", "sum_hdd", "sum_cdd"]
 
 ################
-# GCM list
+# Climate info
 ################
 gard_gcms = ["CanESM5", "CESM2-LENS", "EC-Earth3"]
+ensembles = ["LOCA2", "GARD-LENS", "STAR-ESDM"]
+ssps = ["ssp245", "ssp370", "ssp585"]
 
 ################
 # Paths

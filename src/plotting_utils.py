@@ -6,7 +6,7 @@ import pandas as pd
 import xarray as xr
 from matplotlib.lines import Line2D
 
-from utils import gard_gcms
+from utils import ensembles, ssps
 from utils import roar_data_path as project_data_path
 
 ssp_colors = {
@@ -198,6 +198,37 @@ def plot_uc_map(
 #######################
 # 'Qualitative' plot
 #######################
+def plot_conf_intvs(
+    df, plot_col, positions, color, ax, limits=None, lw=1.5, s=20
+):
+    # Filter data below limits if desired
+    if limits is not None:
+        data = df[(df[plot_col] < limits[1]) & (df[plot_col] > limits[0])]
+    else:
+        data = df.copy()
+
+    # Point for median
+    ax.scatter(
+        x=[data[data["quantile"] == "0.5"][plot_col].values[0]],
+        y=positions,
+        c=color,
+        s=s,
+        zorder=6,
+    )
+
+    # Line for 95% CI
+    ax.plot(
+        [
+            data[data["quantile"] == "0.025"][plot_col].values[0],
+            data[data["quantile"] == "0.957"][plot_col].values[0],
+        ],
+        [positions, positions],
+        color=color,
+        linewidth=lw,
+        zorder=4,
+    )
+
+
 def plot_boxplot(df, plot_col, positions, color, ax, limits=None, lw=1.5):
     # Filter data below limits if desired
     if limits is not None:
@@ -229,10 +260,6 @@ def plot_boxplot(df, plot_col, positions, color, ax, limits=None, lw=1.5):
 
 
 def plot_response_differences(df, plot_col, xlabel, ax=None, min_members=5):
-    # Plot info
-    ensembles = df["ensemble"].unique()
-    ssps = df["ssp"].unique()
-
     # Create a new figure and axis if none are provided
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 6))
@@ -276,10 +303,6 @@ def plot_response_differences(df, plot_col, xlabel, ax=None, min_members=5):
 
 
 def plot_scenario_differences(df, plot_col, xlabel, ax=None, min_members=5):
-    # Plot info
-    ensembles = df["ensemble"].unique()
-    ssps = df["ssp"].unique()
-
     # Create a new figure and axis if none are provided
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 6))
@@ -340,10 +363,6 @@ def plot_scenario_differences(df, plot_col, xlabel, ax=None, min_members=5):
 def plot_scenario_differences_by_gcm(
     df, plot_col, xlabel, ax=None, min_members=5
 ):
-    # Plot info
-    ensembles = df["ensemble"].unique()
-    ssps = df["ssp"].unique()
-
     # Create a new figure and axis if none are provided
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 6))
@@ -399,10 +418,6 @@ def plot_scenario_differences_by_gcm(
 
 
 def plot_iv_differences(df, plot_col, xlabel, ax=None, min_members=5):
-    # Plot info
-    ensembles = df["ensemble"].unique()
-    ssps = df["ssp"].unique()
-
     # Create a new figure and axis if none are provided
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 6))
@@ -641,12 +656,15 @@ def plot_decomp_qual(
 # Simpler qualitative plot
 ##########################
 def plot_boxplot_all(
-    df, plot_col, xlabel, title, ax=None, min_members=5, legend=True
+    df,
+    plot_col,
+    xlabel,
+    title,
+    ax=None,
+    min_members=5,
+    legend=True,
+    limits=None,
 ):
-    # Plot info
-    ensembles = df["ensemble"].unique()
-    ssps = df["ssp"].unique()
-
     # Create a new figure and axis if none are provided
     if ax is None:
         fig, ax = plt.subplots(figsize=(4, 8))
@@ -666,7 +684,9 @@ def plot_boxplot_all(
             ylabels.append("")
             idx += 1
             # Plot
-            plot_boxplot(data, plot_col, [idx], ssp_colors[ssp], ax)
+            plot_boxplot(
+                data, plot_col, [idx], ssp_colors[ssp], ax, limits=limits
+            )
             idx += 1
             ylabels.append(f"{ensemble} ({len(data)})")
 
@@ -687,7 +707,12 @@ def plot_boxplot_all(
                     data = df_sel[df_sel["gcm"] == gcm]
                     if len(data) > 10:
                         plot_boxplot(
-                            data, plot_col, [idx], ssp_colors[ssp], ax
+                            data,
+                            plot_col,
+                            [idx],
+                            ssp_colors[ssp],
+                            ax,
+                            limits=limits,
                         )
                     else:
                         ax.scatter(
@@ -745,6 +770,8 @@ def plot_city(
     proj_slice="2050-2100",
     hist_slice="1950-2014",
     plot_diff=False,
+    min_members=10,
+    limits=None,
 ):
     # Read
     file_name = f"{city}_{metric_id}_{proj_slice}_{hist_slice}_{return_period}rl_{regrid_method}.csv"
@@ -768,4 +795,122 @@ def plot_city(
         ax=ax,
         legend=legend,
         title=title,
+        min_members=min_members,
+        limits=limits,
+    )
+
+
+def plot_boxplot_all_bayes(
+    df,
+    plot_col,
+    xlabel,
+    title,
+    ax=None,
+    min_members=5,
+    limits=None,
+    legend=True,
+    lw=1.5,
+    s=20,
+    idx_step=1,
+):
+    # Create a new figure and axis if none are provided
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(4, 10))
+
+    idx = 0
+    ylabels = []
+    yskip = []
+
+    # Separate by SSPs first
+    for ssp in ssps:
+        # STAR-ESDM is separate
+        ensemble = "STAR-ESDM"
+        data = df[(df["ensemble"] == ensemble) & (df["ssp"] == ssp)]
+        # Separate
+        yskip.append(idx)
+        ylabels.append("")
+        idx += idx_step
+        # Plot
+        gcms = data["gcm"].unique()
+        if len(gcms) > 0:
+            idxx_steps = np.linspace(-idx_step / 3, idx_step / 3, len(gcms))
+            for idxx, gcm in enumerate(gcms):
+                plot_conf_intvs(
+                    data[data["gcm"] == gcm],
+                    plot_col=plot_col,
+                    positions=[idx + idxx_steps[idxx]],
+                    color=ssp_colors[ssp],
+                    ax=ax,
+                    lw=lw,
+                    s=s,
+                    limits=limits,
+                )
+            idx += idx_step
+            ylabels.append(f"{ensemble} ({len(data['gcm'].unique())})")
+
+        # Loop through 'large' ensembles
+        for ensemble in ["LOCA2", "GARD-LENS"]:
+            # Filter minimum members
+            df_sel = df[(df["ensemble"] == ensemble) & (df["ssp"] == ssp)]
+            min_filter = (
+                df_sel[df_sel["quantile"] == "mean"]
+                .groupby("gcm")[plot_col]
+                .count()
+                >= min_members
+            )
+            if min_filter.sum() > 0:
+                # Add space
+                yskip.append(idx)
+                ylabels.append("")
+                idx += idx_step
+
+                # Loop through GCMs
+                gcms = min_filter[min_filter].index
+                for gcm in gcms:
+                    data = df_sel[df_sel["gcm"] == gcm]
+                    members = data["member"].unique()
+                    idxx_steps = np.linspace(
+                        -idx_step / 3, idx_step / 3, len(members)
+                    )
+                    for idxx, member in enumerate(members):
+                        plot_conf_intvs(
+                            data[data["member"] == member],
+                            plot_col=plot_col,
+                            positions=idx + idxx_steps[idxx],
+                            color=ssp_colors[ssp],
+                            ax=ax,
+                            lw=lw,
+                            s=s,
+                            limits=limits,
+                        )
+                    idx += idx_step
+                    ylabels.append(
+                        f"{ensemble} {gcm} ({len(data['member'].unique())})"
+                    )
+
+    # Legend
+    if legend:
+        legend_elements = [
+            Line2D(
+                [0],
+                [0],
+                color=ssp_colors[ssp],
+                marker="o",
+                markerfacecolor=ssp_colors[ssp],
+                markersize=8,
+                lw=2,
+                label=ssp_labels[ssp],
+            )
+            for ssp in ssp_colors.keys()
+        ]
+        ax.legend(handles=legend_elements)
+
+    # Tidy
+    ax.grid(alpha=0.2)
+    ax.set_xlabel(xlabel)
+    ax.set_title(title)
+    ax.set_yticks(
+        np.delete(np.arange(len(ylabels)), yskip),
+        np.delete(ylabels, yskip),
+        fontsize=10,
     )
