@@ -236,6 +236,9 @@ def _fit_gev_1d_stationary(
     assert len(data) == expected_length, (
         f"data length is {len(data)}, expected {expected_length}"
     )
+    # Some GARD-LENS outputs have all values zero
+    if (data == 0.0).all():
+        return (np.nan, np.nan, np.nan)
     # Fit
     if fit_method == "lmom":
         lmom = samlmom3(data)
@@ -314,6 +317,7 @@ def fit_gev_xr(
     metric_id,
     stationary,
     years,
+    expected_length,
     fit_method,
     periods_for_level=None,
     levels_for_period=None,
@@ -333,7 +337,6 @@ def fit_gev_xr(
         scalar = 1.0
 
     # Do the fit
-    expected_length = years[1] - years[0] + 1
     if stationary:
         fit_gev_1d = partial(
             _fit_gev_1d_stationary,
@@ -450,16 +453,17 @@ def gev_fit_single(
             ds = ds.sel(time=slice(years[0], years[1]))
 
         # Check length is as expected
-        expected_length = years[1] - years[0] + 1
         if (
             ensemble == "GARD-LENS"
-            and gcm == "EC-Earth3"
-            and ssp == "historical"
+            and gcm == "ecearth3"
+            and ssp_name == "historical"
         ):
-            assert len(ds["time"]) == (2014 - 1980 + 1), (
+            expected_length = 2014 - 1970 + 1  # GARD-LENS EC-Earth3
+            assert len(ds["time"]) == expected_length, (
                 f"ds length is {len(ds['time'])}, expected {expected_length}"
-            )  # different for this output
+            )
         else:
+            expected_length = years[1] - years[0] + 1
             assert len(ds["time"]) == expected_length, (
                 f"ds length is {len(ds['time'])}, expected {expected_length}"
             )
@@ -471,6 +475,7 @@ def gev_fit_single(
             stationary=stationary,
             fit_method=fit_method,
             years=years,
+            expected_length=expected_length,
             periods_for_level=periods_for_level,
             levels_for_period=levels_for_period,
         )
@@ -566,7 +571,7 @@ def gev_fit_all(
 
         # Fit for historical and ssp
         for ssp_id in ["historical", ssp]:
-            years = hist_years if ssp == "historical" else future_years
+            years = hist_years if ssp_id == "historical" else future_years
             if years is not None:
                 out = dask.delayed(gev_fit_single)(
                     ensemble=ensemble,
@@ -597,7 +602,7 @@ def gev_fit_all(
 
         # Do for historical and ssp
         for ssp_id in ["historical", ssp]:
-            years = hist_years if ssp == "historical" else future_years
+            years = hist_years if ssp_id == "historical" else future_years
             if years is not None:
                 out = dask.delayed(gev_fit_single)(
                     ensemble=ensemble,
