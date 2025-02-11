@@ -495,7 +495,7 @@ def fit_bayesian_gev_ensemble(
         _ = dask.compute(*delayed)
 
 
-def gather_bayesian_gev_results_single(file, return_periods):
+def gather_bayesian_gev_results_single(file, return_periods, years=None):
     """
     Gathers a single Bayesian GEV results for a selected city and metric, stores return levels in a dataframe.
     """
@@ -518,19 +518,40 @@ def gather_bayesian_gev_results_single(file, return_periods):
 
     # Return CIs for return levels
     return_level_columns = [f"{p}yr_return_level" for p in return_periods]
-    rl_quantiles = (
-        trace["posterior"][return_level_columns]
-        .quantile([0.025, 0.5, 0.957], dim=["chain", "draw"])
-        .to_dataframe()
-        .reset_index()
-    )
-    rl_mean = (
-        trace["posterior"][return_level_columns]
-        .mean(dim=["chain", "draw"])
-        .expand_dims(quantile=["mean"])
-        .to_dataframe()
-        .reset_index()
-    )
+    if years is None:
+        rl_quantiles = (
+            trace["posterior"][return_level_columns]
+            .quantile([0.025, 0.5, 0.957], dim=["chain", "draw"])
+            .to_dataframe()
+            .reset_index()
+        )
+        rl_mean = (
+            trace["posterior"][return_level_columns]
+            .mean(dim=["chain", "draw"])
+            .expand_dims(quantile=["mean"])
+            .to_dataframe()
+            .reset_index()
+        )
+    else:
+        rl_quantiles = (
+            (
+                trace["posterior"][return_level_columns].sel(time=years[1])
+                - trace["posterior"][return_level_columns].sel(time=years[0])
+            )
+            .quantile([0.025, 0.5, 0.975], dim=["chain", "draw"])
+            .to_dataframe()
+            .reset_index()
+        )
+        rl_mean = (
+            (
+                trace["posterior"][return_level_columns].sel(time=years[1])
+                - trace["posterior"][return_level_columns].sel(time=years[0])
+            )
+            .mean(dim=["chain", "draw"])
+            .expand_dims(quantile=["mean"])
+            .to_dataframe()
+            .reset_index()
+        )
 
     # Concat
     df = pd.concat([rl_quantiles, rl_mean])
@@ -548,6 +569,8 @@ def gather_bayesian_gev_results_all(
     metric_id,
     return_periods,
     stationary,
+    prior_identifier,
+    years=None,
     project_data_path=project_data_path,
 ):
     """
@@ -557,14 +580,14 @@ def gather_bayesian_gev_results_all(
     # Get all fits
     stationary_string = "stat" if stationary else "nonstat"
     files = glob(
-        f"{project_data_path}/extreme_value/cities/original_grid/bayes/{city}_{metric_id}_*_{stationary_string}.nc"
+        f"{project_data_path}/extreme_value/cities/original_grid/bayes/{city}_{metric_id}_*_{stationary_string}_{prior_identifier}.nc"
     )
 
     # Loop through all
     delayed = []
     for file in files:
         tmp = dask.delayed(gather_bayesian_gev_results_single)(
-            file=file, return_periods=return_periods
+            file=file, return_periods=return_periods, years=years
         )
         delayed.append(tmp)
 

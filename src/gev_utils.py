@@ -10,6 +10,7 @@ from scipy import special
 from scipy.optimize import fsolve, minimize
 from scipy.stats import genextreme as gev
 
+import sdfc_classes as sd
 from utils import get_unique_loca_metrics, loca_gard_mapping
 from utils import roar_code_path as project_code_path
 from utils import roar_data_path as project_data_path
@@ -212,28 +213,108 @@ def optimizer(func, x0, args, disp):
     return res.x
 
 
-def _fit_gev_1d(data, method="lmom", optimizer=optimizer):
+def _fit_gev_1d_stationary(
+    data, expected_length, fit_method="lmom", optimizer=optimizer
+):
     """
     Fit GEV to 1-dimensional data. Note we follow scipy convention
     of negating the shape parameter relative to other sources.
     """
+
+    # Check if all finite
     if not np.isfinite(data).all():
         return (np.nan, np.nan, np.nan)
-    elif np.all(np.isclose(data, data[0])):
-        return (np.nan, np.nan, np.nan)  # for GARD-LENS band above CONUS
+
+    # Round data
+    data = np.round(data, 4)
+
+    # # There should be no more than 1 consecutive duplicate
+    # assert (np.diff(data) == 0.0).sum() <= 1, (
+    #     "consecutive duplicate values in data"
+    # )
+    # Check length
+    assert len(data) == expected_length, (
+        f"data length is {len(data)}, expected {expected_length}"
+    )
+    # Fit
+    if fit_method == "lmom":
+        lmom = samlmom3(data)
+        return pargev(lmom)
+    elif fit_method == "mle":
+        shape, location, scale = gev.fit(data, optimizer=optimizer)
+        return location, scale, shape
+
+
+def negative_log_likelihood(params, data, covariate):
+    shape, loc_intcp, loc_trend, scale = params
+    loc = loc_intcp + loc_trend * covariate
+    return -gev.logpdf(data, shape, loc, scale).sum()
+
+
+def nonstationary_optimizer(data, covariate, initial_params):
+    result = minimize(
+        negative_log_likelihood,
+        initial_params,
+        args=(data, covariate),
+        method="Nelder-Mead",
+        bounds=((-1, 1), (0, 500), (-10, 10), (0, 100)),
+    )
+    if result.success:
+        shape, loc_intcp, loc_trend, scale = result.x
+        return (loc_intcp, loc_trend, scale, shape)
     else:
-        if method == "lmom":
-            lmom = samlmom3(data)
-            return pargev(lmom)
-        elif method == "mle":
-            scale, location, shape = gev.fit(data, optimizer=optimizer)
-            return location, scale, shape
+        return (np.nan, np.nan, np.nan, np.nan)
+
+
+def _fit_gev_1d_nonstationary(data, years, fit_method="mle"):
+    """
+    Fit non-stationary GEV to 1-dimensional data. Note we follow scipy convention
+    of negating the shape parameter relative to other sources.
+    """
+
+    # Check if all finite
+    if not np.isfinite(data).all():
+        return (np.nan, np.nan, np.nan, np.nan)
+
+    # Round data
+    data = np.round(data, 4)
+
+    # # There should be no more than 1 consecutive duplicate
+    # assert (np.diff(data) == 0.0).sum() <= 1, (
+    #     "consecutive duplicate values in data"
+    # )
+
+    # Check length
+    expected_length = years[1] - years[0] + 1
+    assert len(data) == expected_length, (
+        f"data length is {len(data)}, expected {expected_length}"
+    )
+    # Fit
+    if fit_method == "mle":
+        # Initial params from L-moments
+        loc, scale, shape = pargev(samlmom3(data))
+        initial_params = [shape, loc, 0.0, scale]
+        # Fit
+        return nonstationary_optimizer(
+            data, np.arange(len(data)), initial_params=initial_params
+        )
+    elif fit_method == "sdfc":
+        law_ns = sd.GEV()
+        for i in range(100):
+            law_ns.fit(data, c_loc=np.arange(len(data)))
+            # if the first coefficient is not zero, we stop fitting
+            if law_ns.coef_[0] != 0:
+                loc_intcp, loc_trend, scale, shape = tuple(law_ns.coef_)
+                return (loc_intcp, loc_trend, scale, -shape)
+        return (np.nan, np.nan, np.nan, np.nan)
 
 
 def fit_gev_xr(
     ds,
     metric_id,
-    method="lmom",
+    stationary,
+    years,
+    fit_method,
     periods_for_level=None,
     levels_for_period=None,
 ):
@@ -252,25 +333,52 @@ def fit_gev_xr(
         scalar = 1.0
 
     # Do the fit
-    fit_gev_1d = partial(_fit_gev_1d, method=method)
-    loc, scale, shape = xr.apply_ufunc(
+    expected_length = years[1] - years[0] + 1
+    if stationary:
+        fit_gev_1d = partial(
+            _fit_gev_1d_stationary,
+            fit_method=fit_method,
+            expected_length=expected_length,
+        )
+        output_dtypes = [float] * 3
+        output_core_dims = [[], [], []]
+    else:
+        fit_gev_1d = partial(
+            _fit_gev_1d_nonstationary,
+            years=years,
+            fit_method=fit_method,
+        )
+        output_dtypes = [float] * 4
+        output_core_dims = [[], [], [], []]
+
+    fit_params = xr.apply_ufunc(
         fit_gev_1d,
         scalar * ds,
         input_core_dims=[["time"]],
-        output_core_dims=[[], [], []],
+        output_core_dims=output_core_dims,
         vectorize=True,
         dask="allowed",
-        output_dtypes=[float, float, float],
+        output_dtypes=output_dtypes,
     )
 
     # Create a dataset with the output parameters
-    ds_out = xr.merge(
-        [
-            loc[var_id].rename("loc"),
-            scale[var_id].rename("scale"),
-            shape[var_id].rename("shape"),
-        ]
-    )
+    if stationary:
+        ds_out = xr.merge(
+            [
+                fit_params[0][var_id].rename("loc"),
+                fit_params[1][var_id].rename("scale"),
+                fit_params[2][var_id].rename("shape"),
+            ]
+        )
+    else:
+        ds_out = xr.merge(
+            [
+                fit_params[0][var_id].rename("loc_intcp"),
+                fit_params[1][var_id].rename("loc_trend"),
+                fit_params[2][var_id].rename("scale"),
+                fit_params[3][var_id].rename("shape"),
+            ]
+        )
 
     # Return level calculations (for set periods)
     if periods_for_level is not None:
@@ -299,9 +407,11 @@ def gev_fit_single(
     ssp,
     metric_id,
     years,
+    stationary,
+    fit_method,
     store_path,
-    periods_for_level=None,
-    levels_for_period=None,
+    periods_for_level,
+    levels_for_period,
     project_data_path=project_data_path,
     project_code_path=project_code_path,
 ):
@@ -315,7 +425,8 @@ def gev_fit_single(
         else:
             ssp_name = ssp
         time_name = f"{years[0]}-{years[1]}" if years is not None else "all"
-        store_name = f"{ensemble}_{gcm}_{member}_{ssp_name}_{time_name}.nc"
+        stat_name = "stat" if stationary else "nonstat"
+        store_name = f"{ensemble}_{gcm}_{member}_{ssp_name}_{time_name}_{stat_name}_{fit_method}.nc"
 
         if os.path.exists(f"{store_path}/{store_name}"):
             return None
@@ -338,10 +449,28 @@ def gev_fit_single(
         if years is not None:
             ds = ds.sel(time=slice(years[0], years[1]))
 
+        # Check length is as expected
+        expected_length = years[1] - years[0] + 1
+        if (
+            ensemble == "GARD-LENS"
+            and gcm == "EC-Earth3"
+            and ssp == "historical"
+        ):
+            assert len(ds["time"]) == (2014 - 1980 + 1), (
+                f"ds length is {len(ds['time'])}, expected {expected_length}"
+            )  # different for this output
+        else:
+            assert len(ds["time"]) == expected_length, (
+                f"ds length is {len(ds['time'])}, expected {expected_length}"
+            )
+
         # Fit GEV
         ds_out = fit_gev_xr(
             ds=ds,
             metric_id=metric_id,
+            stationary=stationary,
+            fit_method=fit_method,
+            years=years,
             periods_for_level=periods_for_level,
             levels_for_period=levels_for_period,
         )
@@ -372,9 +501,9 @@ def gev_fit_single(
         ds_out.to_netcdf(f"{store_path}/{store_name}")
     # Log if error
     except Exception as e:
-        except_path = f"{project_code_path}/scripts/logs"
+        except_path = f"{project_code_path}/scripts/logs/gev_freq/"
         with open(
-            f"{except_path}/{ensemble}_{gcm}_{member}_{ssp}_{metric_id}.txt",
+            f"{except_path}/{ensemble}_{gcm}_{member}_{ssp}_{metric_id}_{stat_name}.txt",
             "w",
         ) as f:
             f.write(str(e))
@@ -383,14 +512,21 @@ def gev_fit_single(
 ###############################
 # GEV fit across whole ensemble
 ###############################
-def gev_fit_all(metric_id, future_years=[2050, 2100], hist_years=[1950, 2014]):
+def gev_fit_all(
+    metric_id,
+    stationary,
+    fit_method,
+    periods_for_level,
+    levels_for_period,
+    future_years,
+    hist_years,
+):
     """
     Fits a GEV distribution to the entire meta-ensemble of outputs.
+    Set hist_years to None to skip historical.
     """
     # Store results location
-    store_path = (
-        f"{project_data_path}/extreme_value/original_grids/{metric_id}"
-    )
+    store_path = f"{project_data_path}/extreme_value/original_grid/{metric_id}"
 
     #### LOCA2
     ensemble = "LOCA2"
@@ -403,15 +539,20 @@ def gev_fit_all(metric_id, future_years=[2050, 2100], hist_years=[1950, 2014]):
         gcm, member, ssp = row["gcm"], row["member"], row["ssp"]
         years = hist_years if ssp == "historical" else future_years
 
-        out = dask.delayed(gev_fit_single)(
-            ensemble=ensemble,
-            gcm=gcm,
-            member=member,
-            ssp=ssp,
-            metric_id=metric_id,
-            years=years,
-            store_path=store_path,
-        )
+        if years is not None:
+            out = dask.delayed(gev_fit_single)(
+                ensemble=ensemble,
+                gcm=gcm,
+                member=member,
+                ssp=ssp,
+                metric_id=metric_id,
+                years=years,
+                stationary=stationary,
+                fit_method=fit_method,
+                periods_for_level=periods_for_level,
+                levels_for_period=levels_for_period,
+                store_path=store_path,
+            )
         delayed.append(out)
 
     #### STAR-ESDM
@@ -426,15 +567,20 @@ def gev_fit_all(metric_id, future_years=[2050, 2100], hist_years=[1950, 2014]):
         # Fit for historical and ssp
         for ssp_id in ["historical", ssp]:
             years = hist_years if ssp == "historical" else future_years
-            out = dask.delayed(gev_fit_single)(
-                ensemble=ensemble,
-                gcm=gcm,
-                member=member,
-                ssp=ssp,
-                metric_id=metric_id,
-                years=years,
-                store_path=store_path,
-            )
+            if years is not None:
+                out = dask.delayed(gev_fit_single)(
+                    ensemble=ensemble,
+                    gcm=gcm,
+                    member=member,
+                    ssp=ssp,
+                    metric_id=metric_id,
+                    years=years,
+                    stationary=stationary,
+                    fit_method=fit_method,
+                    periods_for_level=periods_for_level,
+                    levels_for_period=levels_for_period,
+                    store_path=store_path,
+                )
             delayed.append(out)
 
     #### GARD-LENS
@@ -452,15 +598,20 @@ def gev_fit_all(metric_id, future_years=[2050, 2100], hist_years=[1950, 2014]):
         # Do for historical and ssp
         for ssp_id in ["historical", ssp]:
             years = hist_years if ssp == "historical" else future_years
-            out = dask.delayed(gev_fit_single)(
-                ensemble=ensemble,
-                gcm=gcm,
-                member=member,
-                ssp=ssp,
-                metric_id=metric_id,
-                years=years,
-                store_path=store_path,
-            )
+            if years is not None:
+                out = dask.delayed(gev_fit_single)(
+                    ensemble=ensemble,
+                    gcm=gcm,
+                    member=member,
+                    ssp=ssp,
+                    metric_id=metric_id,
+                    years=years,
+                    stationary=stationary,
+                    fit_method=fit_method,
+                    periods_for_level=periods_for_level,
+                    levels_for_period=levels_for_period,
+                    store_path=store_path,
+                )
             delayed.append(out)
 
     # Compute all

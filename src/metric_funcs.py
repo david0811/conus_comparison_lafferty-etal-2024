@@ -61,7 +61,7 @@ def calculate_sum(ds_in, var_id):
 def calculate_max(ds_in, var_id):
     # Might want to calculate temp or precip max
     if var_id == "pr":
-        return transform_precipitation(ds_in)
+        ds_in = transform_precipitation(ds_in, var_id)
     else:
         ds_in = transform_temperature(ds_in, var_id)
 

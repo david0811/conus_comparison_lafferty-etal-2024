@@ -100,7 +100,7 @@ def plot_uc_map(
         )
 
     # Plot details
-    if metric_id == "max_pr":
+    if metric_id in ["max_pr", "min_tasmin", "max_hdd"]:
         cmap = "Blues"
         vmin = np.round(uc[norm].min().to_numpy(), decimals=-1)
         vmax = np.round(uc[norm].quantile(0.95).to_numpy(), decimals=-1)
@@ -259,7 +259,9 @@ def plot_boxplot(df, plot_col, positions, color, ax, limits=None, lw=1.5):
         patch.set_facecolor(color)
 
 
-def plot_response_differences(df, plot_col, xlabel, ax=None, min_members=5):
+def plot_response_differences(
+    df, plot_col, xlabel, ax=None, min_members=5, legend=False
+):
     # Create a new figure and axis if none are provided
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 6))
@@ -292,7 +294,25 @@ def plot_response_differences(df, plot_col, xlabel, ax=None, min_members=5):
                     color=ssp_colors[ssp],
                 )
                 idx += 1
-                ylabels.append(f"{ensemble}\n{ssp} ({len(plot_df)})")
+                ylabels.append(
+                    f"{ensemble}\n{ssp_labels[ssp]} ({len(plot_df)})"
+                )
+
+    # Legend
+    if legend:
+        legend_elements = [
+            Line2D(
+                [0],
+                [0],
+                marker="o",
+                color="w",
+                markerfacecolor=ssp_colors[ssp],
+                markersize=15,
+                label=ssp_labels[ssp],
+            )
+            for ssp in ssp_colors.keys()
+        ]
+        ax.legend(handles=legend_elements)
 
     # Tidy
     ax.set_yticks(np.arange(len(ylabels)), ylabels, fontsize=10)
@@ -383,13 +403,26 @@ def plot_scenario_differences_by_gcm(
                     df_sel.groupby("ssp")[plot_col].count() >= min_members
                 )
                 if min_filter.sum() > 1:
+                    # Plot line connecting values
+                    ax.plot(
+                        df_sel.groupby("ssp")[plot_col].mean(),
+                        [idx] * len(ssps),
+                        linestyle="-",
+                        color="darkgray",
+                        zorder=1,
+                    )
+
                     # Plot forced response for each SSP
                     for ssp in ssps:
                         plot_val = df_sel[df_sel["ssp"] == ssp][
                             plot_col
                         ].mean()
                         ax.scatter(
-                            y=[idx], x=plot_val, c=ssp_colors[ssp], s=100
+                            y=[idx],
+                            x=plot_val,
+                            c=ssp_colors[ssp],
+                            s=100,
+                            zorder=2,
                         )
                     idx += 1
                     ylabels.append(f"{ensemble} {gcm}")
@@ -417,7 +450,9 @@ def plot_scenario_differences_by_gcm(
     ax.legend(handles=legend_elements)
 
 
-def plot_iv_differences(df, plot_col, xlabel, ax=None, min_members=5):
+def plot_iv_differences(
+    df, plot_col, xlabel, ax=None, min_members=5, legend=False
+):
     # Create a new figure and axis if none are provided
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 6))
@@ -455,6 +490,22 @@ def plot_iv_differences(df, plot_col, xlabel, ax=None, min_members=5):
                         )
                     idx += 1
                     ylabels.append(f"{ensemble} {gcm} ({len(data)})")
+    # Legend
+    if legend:
+        legend_elements = [
+            Line2D(
+                [0],
+                [0],
+                marker="o",
+                color="w",
+                markerfacecolor=ssp_colors[ssp],
+                markersize=15,
+                label=ssp_labels[ssp],
+            )
+            for ssp in ssp_colors.keys()
+        ]
+        ax.legend(handles=legend_elements)
+
     # Tidy
     ax.grid(alpha=0.2)
     ax.set_xlabel(xlabel)
@@ -462,7 +513,7 @@ def plot_iv_differences(df, plot_col, xlabel, ax=None, min_members=5):
     ax.set_yticks(np.arange(len(ylabels)), ylabels, fontsize=10)
 
 
-def plot_ds_differences(df, plot_col, xlabel, ax=None):
+def plot_ds_differences(df, plot_col, xlabel, ax=None, ssp_legend=False):
     gcms = df["gcm"].unique()
     members = df["member"].unique()
 
@@ -522,6 +573,18 @@ def plot_ds_differences(df, plot_col, xlabel, ax=None):
     ax.set_title("Downscaling uncertainty")
 
     # Legend
+    ssp_legend_elements = [
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            color="w",
+            markerfacecolor=ssp_colors[ssp],
+            markersize=15,
+            label=ssp_labels[ssp],
+        )
+        for ssp in ssp_colors.keys()
+    ]
     legend_elements = [
         Line2D(
             [0],
@@ -534,7 +597,10 @@ def plot_ds_differences(df, plot_col, xlabel, ax=None):
         )
         for ensemble in ensemble_markers.keys()
     ]
-    ax.legend(handles=legend_elements)
+    if ssp_legend:
+        ax.legend(handles=ssp_legend_elements + legend_elements)
+    else:
+        ax.legend(handles=legend_elements)
 
 
 def plot_ds_differences_old(df, plot_col, xlabel, ax=None):
@@ -785,8 +851,21 @@ def plot_city(
     if not plot_diff:
         df_plot = df_all[df_all["ssp"] != "historical"]
     else:
-        # TO DO
-        pass
+        # Plot differences
+        df_plot = pd.merge(
+            df_all[df_all["ssp"] == "historical"].set_index(
+                ["ensemble", "gcm", "member"]
+            )[[plot_col]],
+            df_all[df_all["ssp"] != "historical"].set_index(
+                ["ensemble", "gcm", "member"]
+            )[[plot_col, "ssp"]],
+            on=["ensemble", "gcm", "member"],
+            suffixes=("_hist", "_proj"),
+        ).reset_index()
+
+        df_plot[plot_col] = (
+            df_plot[f"{plot_col}_proj"] - df_plot[f"{plot_col}_hist"]
+        )
 
     plot_boxplot_all(
         df_plot,
