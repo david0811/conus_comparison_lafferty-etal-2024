@@ -516,6 +516,7 @@ def plot_iv_differences(
 def plot_ds_differences(df, plot_col, xlabel, ax=None, ssp_legend=False):
     gcms = df["gcm"].unique()
     members = df["member"].unique()
+    ensembles = df["ensemble"].unique()
 
     # Create a new figure and axis if none are provided
     if ax is None:
@@ -596,6 +597,7 @@ def plot_ds_differences(df, plot_col, xlabel, ax=None, ssp_legend=False):
             label=ensemble,
         )
         for ensemble in ensemble_markers.keys()
+        if ensemble in ensembles
     ]
     if ssp_legend:
         ax.legend(handles=ssp_legend_elements + legend_elements)
@@ -810,7 +812,7 @@ def plot_boxplot_all(
                 label=ssp_labels[ssp],
             )
             for ssp in ssp_colors.keys()
-        ]
+        ][::-1]
         ax.legend(handles=legend_elements)
 
     # Tidy

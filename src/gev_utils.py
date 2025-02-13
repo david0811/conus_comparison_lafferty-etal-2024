@@ -5,6 +5,7 @@ from glob import glob
 
 import dask
 import numpy as np
+import pandas as pd
 import xarray as xr
 from scipy import special
 from scipy.optimize import fsolve, minimize
@@ -299,7 +300,9 @@ def _fit_gev_1d_nonstationary(data, years, fit_method="mle"):
         initial_params = [shape, loc, 0.0, scale]
         # Fit
         return nonstationary_optimizer(
-            data, np.arange(len(data)), initial_params=initial_params
+            data=data,
+            covariate=np.arange(len(data)),
+            initial_params=initial_params,
         )
     elif fit_method == "sdfc":
         law_ns = sd.GEV()
@@ -621,3 +624,150 @@ def gev_fit_all(
 
     # Compute all
     _ = dask.compute(*delayed)
+
+
+###########################
+# Fit GEV to single city
+###########################
+
+
+def fit_gev_city(
+    city,
+    metric_id,
+    ensemble,
+    gcm,
+    member,
+    ssp,
+    years,
+    stationary,
+    fit_method,
+    project_data_path=project_data_path,
+):
+    """
+    Fits the GEV model to a selected city, ensemble, GCM, member, SSP, and years.
+    """
+
+    # Read and select data
+    df = pd.read_csv(
+        f"{project_data_path}/metrics/cities/{city}_{metric_id}.csv"
+    )
+
+    df_sel = df[
+        (df["ensemble"] == ensemble)
+        & (df["gcm"] == gcm)
+        & (df["member"] == member)
+        & (df["ssp"] == ssp)
+        & (df["time"] >= years[0])
+        & (df["time"] <= years[1])
+    ]
+
+    # Skip invalid SSP-years combinations
+    if len(df_sel) == 0:
+        return None
+
+    # Info
+    agg, var_id = metric_id.split("_")
+    data = df_sel[var_id].to_numpy()
+    if agg == "min":
+        scalar = -1.0
+    else:
+        scalar = 1.0
+
+    # Check length is as expected
+    if ensemble == "GARD-LENS" and gcm == "ecearth3" and ssp == "historical":
+        expected_length = 2014 - 1970 + 1  # GARD-LENS EC-Earth3
+        assert len(df_sel) == expected_length, (
+            f"ds length is {len(df_sel)}, expected {expected_length}"
+        )
+    else:
+        expected_length = years[1] - years[0] + 1
+        assert len(df_sel) == expected_length, (
+            f"ds length is {len(df_sel)}, expected {expected_length}"
+        )
+
+    # Do the fit
+    if stationary:
+        res = _fit_gev_1d_stationary(
+            data=scalar * data,
+            expected_length=expected_length,
+            fit_method=fit_method,
+        )
+    else:
+        res = _fit_gev_1d_nonstationary(
+            data=scalar * data,
+            years=years,
+            fit_method=fit_method,
+        )
+
+    # Return a dataframe
+    if stationary:
+        df_res = pd.DataFrame(
+            {
+                "ensemble": [ensemble],
+                "gcm": [gcm],
+                "member": [member],
+                "ssp": [ssp],
+                "loc": [res[0]],
+                "scale": [res[1]],
+                "shape": [res[2]],
+            }
+        )
+    else:
+        df_res = pd.DataFrame(
+            {
+                "ensemble": [ensemble],
+                "gcm": [gcm],
+                "member": [member],
+                "ssp": [ssp],
+                "loc_intcp": [res[0]],
+                "loc_trend": [res[1]],
+                "scale": [res[2]],
+                "shape": [res[3]],
+            }
+        )
+
+    return df_res
+
+
+def fit_ensemble_gev_city(
+    city,
+    metric_id,
+    years,
+    stationary,
+    fit_method,
+    project_data_path=project_data_path,
+):
+    """
+    Fit city GEV across the entire ensemble.
+    """
+    # Get unique combos
+    df = pd.read_csv(
+        f"{project_data_path}/metrics/cities/{city}_{metric_id}.csv"
+    )
+    df = df.set_index(["ensemble", "gcm", "member", "ssp"]).sort_index()
+    combos = df.index.unique()
+
+    # Output df
+    df_out = []
+
+    # Loop through
+    for combo in combos:
+        ensemble, gcm, member, ssp = combo
+        try:
+            df_tmp = fit_gev_city(
+                city=city,
+                metric_id=metric_id,
+                ensemble=ensemble,
+                gcm=gcm,
+                member=member,
+                ssp=ssp,
+                years=years,
+                stationary=stationary,
+                fit_method=fit_method,
+            )
+            df_out.append(df_tmp)
+        except:
+            print(ensemble, gcm, ssp, member)
+
+    # Concat and return
+    return pd.concat(df_out)

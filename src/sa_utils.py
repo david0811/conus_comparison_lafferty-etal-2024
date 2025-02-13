@@ -1,15 +1,12 @@
-import os
 from glob import glob
 
 import numpy as np
-import pandas as pd
 import xarray as xr
 
-import gev_utils as gevu
 from utils import roar_data_path as project_data_path
 
 
-def read_all(
+def read_loca(
     metric_id,
     grid,
     regrid_method,
@@ -20,18 +17,16 @@ def read_all(
     cols_to_keep,
 ):
     """
-    Reads all the GEV data for a given metric.
+    Reads the LOCA GEV data for a given metric.
     """
     stat_name = "stat" if stationary else "nonstat"
 
-    ## Read all
-    # LOCA
     if grid == "LOCA2":
         loca_grid_str = "original_grid"
         loca_regrid_str = ""
     elif grid == "GARD-LENS":
         loca_grid_str = "gard_grid"
-        loca_regrid_str = "_{regrid_method}"
+        loca_regrid_str = f"_{regrid_method}"
 
     loca_ssp245_files = glob(
         f"{project_data_path}/extreme_value/{loca_grid_str}/{metric_id}/LOCA2_*_ssp245_{proj_slice}_{stat_name}_{fit_method}{loca_regrid_str}.nc"
@@ -67,20 +62,81 @@ def read_all(
         dim="ssp",
     )
 
-    # STAR
+    if hist_slice is not None:
+        loca_hist_files = glob(
+            f"{project_data_path}/extreme_value/{loca_grid_str}/{metric_id}/LOCA2_*_{hist_slice}_{stat_name}_{fit_method}{loca_regrid_str}.nc"
+        )
+        ds_loca_hist = xr.combine_by_coords(
+            [xr.open_dataset(file)[cols_to_keep] for file in loca_hist_files]
+        )
+        ds_loca = xr.concat([ds_loca, ds_loca_hist], dim="ssp")
+
+    return ds_loca
+
+
+def read_star(
+    metric_id,
+    grid,
+    regrid_method,
+    proj_slice,
+    hist_slice,
+    stationary,
+    fit_method,
+    cols_to_keep,
+):
+    """
+    Reads the STAR GEV data for a given metric.
+    """
+    stat_name = "stat" if stationary else "nonstat"
+
     if grid == "LOCA2":
         star_grid_str = "loca_grid"
+        star_regrid_str = f"_{regrid_method}"
     elif grid == "GARD-LENS":
         star_grid_str = "gard_grid"
+        star_regrid_str = f"_{regrid_method}"
+    elif grid == "STAR-ESDM":
+        star_grid_str = "original_grid"
+        star_regrid_str = ""
 
     star_proj_files = glob(
-        f"{project_data_path}/extreme_value/{star_grid_str}/{metric_id}/STAR-ESDM_*_{proj_slice}_{stat_name}_{fit_method}_{regrid_method}.nc"
+        f"{project_data_path}/extreme_value/{star_grid_str}/{metric_id}/STAR-ESDM_*_{proj_slice}_{stat_name}_{fit_method}{star_regrid_str}.nc"
     )
     ds_star = xr.combine_by_coords(
         [xr.open_dataset(file)[cols_to_keep] for file in star_proj_files]
     )
 
-    # GARD
+    # Read historical is desired
+    if hist_slice is not None:
+        star_hist_files = glob(
+            f"{project_data_path}/extreme_value/{star_grid_str}/{metric_id}/STAR-ESDM_*_{hist_slice}_{stat_name}_{fit_method}{star_regrid_str}.nc"
+        )
+        ds_star_hist = xr.combine_by_coords(
+            [xr.open_dataset(file)[cols_to_keep] for file in star_hist_files]
+        )
+        ds_star = xr.concat([ds_star, ds_star_hist], dim="ssp")
+
+    # Drop TaiESM1 -- too hot! (outputs were recalled)
+    ds_star = ds_star.drop_sel(gcm="TaiESM1")
+
+    return ds_star
+
+
+def read_gard(
+    metric_id,
+    grid,
+    regrid_method,
+    proj_slice,
+    hist_slice,
+    stationary,
+    fit_method,
+    cols_to_keep,
+):
+    """
+    Reads the GARD GEV data for a given metric.
+    """
+    stat_name = "stat" if stationary else "nonstat"
+
     if grid == "LOCA2":
         gard_grid_str = "loca_grid"
         gard_regrid_str = f"_{regrid_method}"
@@ -95,27 +151,7 @@ def read_all(
         [xr.open_dataset(file)[cols_to_keep] for file in gard_proj_files]
     )
 
-    # Hist if needed
     if hist_slice is not None:
-        # LOCA
-        loca_hist_files = glob(
-            f"{project_data_path}/extreme_value/{loca_grid_str}/{metric_id}/LOCA2_*_{hist_slice}_{stat_name}_{fit_method}{loca_regrid_str}.nc"
-        )
-        ds_loca_hist = xr.combine_by_coords(
-            [xr.open_dataset(file)[cols_to_keep] for file in loca_hist_files]
-        )
-        ds_loca = xr.concat([ds_loca, ds_loca_hist], dim="ssp")
-
-        # STAR
-        star_hist_files = glob(
-            f"{project_data_path}/extreme_value/{star_grid_str}/{metric_id}/STAR-ESDM_*_{hist_slice}_{stat_name}_{fit_method}_{regrid_method}.nc"
-        )
-        ds_star_hist = xr.combine_by_coords(
-            [xr.open_dataset(file)[cols_to_keep] for file in star_hist_files]
-        )
-        ds_star = xr.concat([ds_star, ds_star_hist], dim="ssp")
-
-        # GARD
         gard_hist_files = glob(
             f"{project_data_path}/extreme_value/{gard_grid_str}/{metric_id}/GARD-LENS_*_{hist_slice}_{stat_name}_{fit_method}{gard_regrid_str}.nc"
         )
@@ -124,8 +160,52 @@ def read_all(
         )
         ds_gard = xr.concat([ds_gard, ds_gard_hist], dim="ssp")
 
-    # STAR-ESDM TaiESM1 is too hot!
-    ds_star = ds_star.drop_sel(gcm="TaiESM1")
+    return ds_gard
+
+
+def read_all(
+    metric_id,
+    grid,
+    regrid_method,
+    proj_slice,
+    hist_slice,
+    stationary,
+    fit_method,
+    cols_to_keep,
+):
+    """
+    Reads all the GEV data for a given metric.
+    """
+    ds_loca = read_loca(
+        metric_id,
+        grid,
+        regrid_method,
+        proj_slice,
+        hist_slice,
+        stationary,
+        fit_method,
+        cols_to_keep,
+    )
+    ds_star = read_star(
+        metric_id,
+        grid,
+        regrid_method,
+        proj_slice,
+        hist_slice,
+        stationary,
+        fit_method,
+        cols_to_keep,
+    )
+    ds_gard = read_gard(
+        metric_id,
+        grid,
+        regrid_method,
+        proj_slice,
+        hist_slice,
+        stationary,
+        fit_method,
+        cols_to_keep,
+    )
 
     return ds_loca, ds_star, ds_gard
 
@@ -418,7 +498,9 @@ def uc_all(
 
     # Compute SSP uncertainty
     ssp_uc = compute_ssp_uc(ds_loca, ds_gard, ds_star, col_name)
-
+    ssp_uc_by_gcm = compute_ssp_uc(
+        ds_loca, ds_gard, ds_star, col_name, by_gcm=True
+    )
     # Compute internal variability uncertainty
     iv_uc = compute_iv_uc(ds_loca, ds_gard, ds_star, col_name)
 
@@ -426,111 +508,29 @@ def uc_all(
     dsc_uc = compute_dsc_uc(ds_loca, ds_gard, ds_star, col_name)
 
     # Merge and return
-    gcm_uc = gcm_uc.rename("gcm_uc")
     ssp_uc = ssp_uc.rename("ssp_uc")
+    ssp_uc_by_gcm = ssp_uc_by_gcm.rename("ssp_uc_by_gcm")
+    gcm_uc = gcm_uc.rename("gcm_uc")
     iv_uc = iv_uc.rename("iv_uc")
     dsc_uc = dsc_uc.rename("dsc_uc")
     uc_range = uc_range.rename("uc_range")
     uc_99w = uc_99w.rename("uc_99w")
     uc_95w = uc_95w.rename("uc_95w")
 
-    uc = xr.merge([gcm_uc, ssp_uc, iv_uc, dsc_uc, uc_range, uc_99w, uc_95w])
+    uc = xr.merge(
+        [
+            ssp_uc_by_gcm,
+            ssp_uc,
+            gcm_uc,
+            iv_uc,
+            dsc_uc,
+            uc_range,
+            uc_99w,
+            uc_95w,
+        ]
+    )
 
     if return_metric:
         return uc, ds_loca, ds_star, ds_gard
     else:
         return uc
-
-
-def store_all_cities(
-    metric_id,
-    regrid_method,
-    proj_slice,
-    hist_slice,
-    return_period,
-    city_list,
-    return_level=None,
-):
-    """
-    Store all cities as csv files for a given metric.
-    """
-    # Check if done for all cities
-    if return_period is not None:
-        metric_save_name = f"{int(return_period)}rl"
-    elif return_level is not None:
-        metric_save_name = f"{return_level}rp"
-    file_names = [
-        f"{city}_{metric_id}_{proj_slice}_{hist_slice}_{metric_save_name}_{regrid_method}.csv"
-        for city in list(city_list.keys())
-    ]
-
-    if not np.all(
-        [
-            os.path.exists(
-                f"{project_data_path}/extreme_value/cities/loca_grid/{file_name}"
-            )
-            for file_name in file_names
-        ]
-    ):
-        # Read all
-        ds_loca, ds_star, ds_gard = read_all(
-            metric_id, regrid_method, proj_slice, hist_slice
-        )
-
-        # Invert if minima
-        if metric_id == "min_tasmin":
-            scalar = -1.0
-        else:
-            scalar = 1.0
-
-        # Compute return level/period
-        if return_period is not None:
-            ds_loca = scalar * gevu.xr_estimate_return_level(
-                return_period, ds_loca
-            )
-            ds_gard = scalar * gevu.xr_estimate_return_level(
-                return_period, ds_gard
-            )
-            ds_star = scalar * gevu.xr_estimate_return_level(
-                return_period, ds_star
-            )
-        elif return_level is not None:
-            ds_loca = gevu.xr_estimate_return_period(return_level, ds_loca)
-            ds_gard = gevu.xr_estimate_return_period(return_level, ds_gard)
-            ds_star = gevu.xr_estimate_return_period(return_level, ds_star)
-
-        # Loop through cities
-        for city in city_list:
-            # Read
-            lat, lon = city_list[city]
-            df_loca = (
-                ds_loca.sel(lat=lat, lon=360 + lon, method="nearest")
-                .to_dataframe()
-                .dropna()
-                .drop(columns=["lat", "lon"])
-                .reset_index()
-            )
-            df_star = (
-                ds_star.sel(lat=lat, lon=360 + lon, method="nearest")
-                .to_dataframe()
-                .dropna()
-                .drop(columns=["lat", "lon"])
-                .reset_index()
-            )
-            df_gard = (
-                ds_gard.sel(lat=lat, lon=360 + lon, method="nearest")
-                .to_dataframe()
-                .dropna()
-                .drop(columns=["lat", "lon"])
-                .reset_index()
-            )
-
-            # Concat
-            df_all = pd.concat([df_loca, df_star, df_gard])
-
-            # Store
-            file_name = f"{city}_{metric_id}_{proj_slice}_{hist_slice}_{metric_save_name}_{regrid_method}.csv"
-            df_all.to_csv(
-                f"{project_data_path}/extreme_value/cities/loca_grid/{file_name}",
-                index=False,
-            )
