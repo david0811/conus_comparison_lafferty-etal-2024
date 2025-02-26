@@ -7,6 +7,11 @@ import dask
 import numpy as np
 import pandas as pd
 import xarray as xr
+
+###########################################################
+# L-moments GEV fitting
+# https://github.com/xiaoganghe/python-climate-visuals
+###########################################################
 from scipy import special
 from scipy.optimize import fsolve, minimize
 from scipy.stats import genextreme as gev
@@ -15,11 +20,6 @@ import sdfc_classes as sd
 from utils import get_unique_loca_metrics, loca_gard_mapping
 from utils import roar_code_path as project_code_path
 from utils import roar_data_path as project_data_path
-
-###########################################################
-# L-moments GEV fitting
-# https://github.com/xiaoganghe/python-climate-visuals
-###########################################################
 
 
 # Calculate samples L-moments
@@ -32,14 +32,9 @@ def samlmom3(sample):
     n = len(sample)
     sample = np.sort(sample.reshape(n))[::-1]
     b0 = np.mean(sample)
-    b1 = np.array(
-        [(n - j - 1) * sample[j] / n / (n - 1) for j in range(n)]
-    ).sum()
+    b1 = np.array([(n - j - 1) * sample[j] / n / (n - 1) for j in range(n)]).sum()
     b2 = np.array(
-        [
-            (n - j - 1) * (n - j - 2) * sample[j] / n / (n - 1) / (n - 2)
-            for j in range(n - 1)
-        ]
+        [(n - j - 1) * (n - j - 2) * sample[j] / n / (n - 1) / (n - 2) for j in range(n - 1)]
     ).sum()
     lmom1 = b0
     lmom2 = 2 * b1 - b0
@@ -214,32 +209,27 @@ def optimizer(func, x0, args, disp):
     return res.x
 
 
-def _fit_gev_1d_stationary(
-    data, expected_length, fit_method="lmom", optimizer=optimizer
-):
+def _fit_gev_1d_stationary(data, expected_length=None, fit_method="lmom", optimizer=optimizer):
     """
     Fit GEV to 1-dimensional data. Note we follow scipy convention
     of negating the shape parameter relative to other sources.
     """
-
-    # Check if all finite
-    if not np.isfinite(data).all():
+    # Return NaN if all Nans
+    if np.isnan(data).all():
         return (np.nan, np.nan, np.nan)
 
     # Round data
-    data = np.round(data, 4)
+    # data = np.round(data, 4)
 
-    # # There should be no more than 1 consecutive duplicate
-    # assert (np.diff(data) == 0.0).sum() <= 1, (
-    #     "consecutive duplicate values in data"
-    # )
-    # Check length
-    assert len(data) == expected_length, (
-        f"data length is {len(data)}, expected {expected_length}"
-    )
+    # Check length of non-NaNs
+    if expected_length is not None:
+        non_nans = np.count_nonzero(~np.isnan(data))
+        assert non_nans == expected_length, f"data length is {non_nans}, expected {expected_length}"
+
     # Some GARD-LENS outputs have all values zero
     if (data == 0.0).all():
         return (np.nan, np.nan, np.nan)
+
     # Fit
     if fit_method == "lmom":
         lmom = samlmom3(data)
@@ -247,6 +237,46 @@ def _fit_gev_1d_stationary(
     elif fit_method == "mle":
         shape, location, scale = gev.fit(data, optimizer=optimizer)
         return location, scale, shape
+
+
+def _gev_parametric_bootstrap_1d_stationary(
+    loc,
+    scale,
+    shape,
+    n_data,
+    n_boot,
+    fit_method,
+    periods_for_level,
+    optimizer=optimizer,
+    return_samples=False,
+):
+    """
+    Generate parametric bootstrap samples for GEV.
+    """
+    params_out = np.full((n_boot, 3), np.nan)
+    return_levels_out = np.full((n_boot, len(periods_for_level)), np.nan)
+
+    # Bootstrap sampling
+    if not np.isnan([loc, scale, shape]).any():
+        boot_samples = gev.rvs(-shape, loc=loc, scale=scale, size=(n_boot, n_data))
+        for i in range(n_boot):
+            # Do the fit
+            params_out[i, :] = _fit_gev_1d_stationary(
+                boot_samples[i], n_data, fit_method=fit_method
+            )
+            # Return levels
+            return_levels_out[i, :] = estimate_return_level(
+                np.array(periods_for_level), *params_out[i]
+            )
+
+    # Return 95% intervals
+    if return_samples:
+        return params_out, return_levels_out
+    else:
+        return (
+            np.percentile(params_out, [2.5, 97.5], axis=0),
+            np.percentile(return_levels_out, [2.5, 97.5], axis=0),
+        )
 
 
 def negative_log_likelihood(params, data, covariate):
@@ -290,9 +320,8 @@ def _fit_gev_1d_nonstationary(data, years, fit_method="mle"):
 
     # Check length
     expected_length = years[1] - years[0] + 1
-    assert len(data) == expected_length, (
-        f"data length is {len(data)}, expected {expected_length}"
-    )
+    assert len(data) == expected_length, f"data length is {len(data)}, expected {expected_length}"
+
     # Fit
     if fit_method == "mle":
         # Initial params from L-moments
@@ -313,6 +342,61 @@ def _fit_gev_1d_nonstationary(data, years, fit_method="mle"):
                 loc_intcp, loc_trend, scale, shape = tuple(law_ns.coef_)
                 return (loc_intcp, loc_trend, scale, -shape)
         return (np.nan, np.nan, np.nan, np.nan)
+
+
+def _gev_parametric_bootstrap_1d_nonstationary(
+    params,
+    years,
+    n_data,
+    n_boot,
+    fit_method,
+    periods_for_level,
+    return_period_years,
+    return_period_diffs,
+):
+    """
+    Generate parametric bootstrap samples for GEV.
+    """
+    loc_intcp, loc_trend, scale, shape = params
+
+    params_out = np.zeros((n_boot, 4))
+    return_levels_out = np.zeros((n_boot, len(periods_for_level) * len(return_period_years)))
+    return_level_diffs_out = np.zeros((n_boot, len(periods_for_level) * len(return_period_diffs)))
+
+    # Bootstrap sampling
+    for i in range(n_boot):
+        # Do the fit
+        boot_sample = gev.rvs(shape, loc=loc_intcp + loc_trend * np.arange(n_data), scale=scale)
+        params_out[i, :] = _fit_gev_1d_nonstationary(boot_sample, years, fit_method=fit_method)
+        # Return levels
+        loc_intcp_tmp, loc_trend_tmp, scale_tmp, shape_tmp = params_out[i, :]
+        return_levels_out[i, :] = [
+            estimate_return_level(
+                period,
+                loc_intcp_tmp + loc_trend_tmp * (return_period_year - years[0]),
+                scale_tmp,
+                shape_tmp,
+            )
+            for period in periods_for_level
+            for return_period_year in return_period_years
+        ]
+        return_level_diffs_out[i, :] = [
+            estimate_return_level(
+                period,
+                loc_intcp_tmp + loc_trend_tmp * (return_period_diff[1] - return_period_diff[0]),
+                scale_tmp,
+                shape_tmp,
+            )
+            for period in periods_for_level
+            for return_period_diff in return_period_diffs
+        ]
+
+    # Return 95% intervals
+    return (
+        np.nanpercentile(params_out, [2.5, 97.5], axis=0),
+        np.nanpercentile(return_levels_out, [2.5, 97.5], axis=0),
+        np.nanpercentile(return_level_diffs_out, [2.5, 97.5], axis=0),
+    )
 
 
 def fit_gev_xr(
@@ -389,11 +473,8 @@ def fit_gev_xr(
     # Return level calculations (for set periods)
     if periods_for_level is not None:
         for period in periods_for_level:
-            ds_out[f"{period}yr_return_level"] = (
-                scalar
-                * estimate_return_level(
-                    period, ds_out["loc"], ds_out["scale"], ds_out["shape"]
-                )
+            ds_out[f"{period}yr_return_level"] = scalar * estimate_return_level(
+                period, ds_out["loc"], ds_out["scale"], ds_out["shape"]
             )
 
     # Return period calculations (for set levels)
@@ -404,6 +485,110 @@ def fit_gev_xr(
             )
 
     return ds_out
+
+
+def fit_gev_xr_bootstrap(
+    ensemble,
+    gcm,
+    member,
+    ssp,
+    metric_id,
+    stationary,
+    years,
+    expected_length,
+    fit_method,
+    store_path,
+    bootstrap="parameteric",
+    n_boot=1000,
+    periods_for_level=None,
+    levels_for_period=None,
+):
+    """
+    Fit GEV to xarray data. Note we follow scipy convention
+    of negating the shape parameter relative to other sources.
+    """
+    # Read main fit results
+    if years == [1950, 2014]:
+        ssp_name = "historical"
+    else:
+        ssp_name = ssp
+    time_name = f"{years[0]}-{years[1]}" if years is not None else "all"
+    stat_name = "stat" if stationary else "nonstat"
+    store_name = f"{ensemble}_{gcm}_{member}_{ssp_name}_{time_name}_{stat_name}_{fit_method}.nc"
+
+    if os.path.exists(f"{store_path}/{store_name}"):
+        ds_fit_main = xr.open_dataset(f"{store_path}/{store_name}")
+    else:
+        print("Main fit not found")
+        return None
+
+    # var_id = metric_id.split("_")[1]
+    # agg_id = metric_id.split("_")[0]
+
+    # # Changes for minima
+    # if agg_id == "min":
+    #     scalar = -1.0
+    # else:
+    #     scalar = 1.0
+
+    # Do the fit
+    if stationary:
+        gev_1d_bootstrap = partial(
+            _gev_parametric_bootstrap_1d_stationary,
+            n_data=expected_length,
+            n_boot=n_boot,
+            fit_method=fit_method,
+            periods_for_level=periods_for_level,
+        )
+        output_dtypes = [float] * 2
+        output_core_dims = [["percentile", "param"], ["percentile", "return_period"]]
+    else:
+        gev_1d_bootstrap = partial(
+            _fit_gev_1d_nonstationary,
+            years=years,
+            fit_method=fit_method,
+        )
+        output_dtypes = [float] * 4
+        output_core_dims = [[], [], [], []]
+
+    params, return_levels = xr.apply_ufunc(
+        gev_1d_bootstrap,
+        ds_fit_main["loc"],
+        ds_fit_main["scale"],
+        ds_fit_main["shape"],
+        input_core_dims=[[], [], []],
+        output_core_dims=output_core_dims,
+        vectorize=True,
+        dask="allowed",
+        output_dtypes=output_dtypes,
+    )
+
+    # Add coordinate labels
+    params = params.assign_coords(percentile=["p025", "p975"], param=["loc", "scale", "shape"])
+
+    return_levels = return_levels.assign_coords(
+        percentile=["p025", "p975"], return_period=periods_for_level
+    )
+
+    # Create a dataset with the output parameters
+    if stationary:
+        params = params.assign_coords(percentile=["p025", "p975"], param=["loc", "scale", "shape"])
+
+        return_levels = return_levels.assign_coords(
+            percentile=["p025", "p975"], return_period=periods_for_level
+        )
+    else:
+        return None
+        # ds_out = xr.merge(
+        #     [
+        #         fit_params[0][var_id].rename("loc_intcp"),
+        #         fit_params[1][var_id].rename("loc_trend"),
+        #         fit_params[2][var_id].rename("scale"),
+        #         fit_params[3][var_id].rename("shape"),
+        #     ]
+        # )
+
+    return params, return_levels
 
 
 def gev_fit_single(
@@ -439,12 +624,8 @@ def gev_fit_single(
 
         # Read file
         if ensemble == "LOCA2":
-            files = glob(
-                f"{project_data_path}/metrics/LOCA2/{metric_id}_{gcm}_{member}_{ssp}_*.nc"
-            )
-            ds = xr.concat(
-                [xr.open_dataset(file) for file in files], dim="time"
-            )
+            files = glob(f"{project_data_path}/metrics/LOCA2/{metric_id}_{gcm}_{member}_{ssp}_*.nc")
+            ds = xr.concat([xr.open_dataset(file) for file in files], dim="time")
         else:
             ds = xr.open_dataset(
                 f"{project_data_path}/metrics/{ensemble}/{metric_id}_{gcm}_{member}_{ssp}.nc"
@@ -456,11 +637,7 @@ def gev_fit_single(
             ds = ds.sel(time=slice(years[0], years[1]))
 
         # Check length is as expected
-        if (
-            ensemble == "GARD-LENS"
-            and gcm == "ecearth3"
-            and ssp_name == "historical"
-        ):
+        if ensemble == "GARD-LENS" and gcm == "ecearth3" and ssp_name == "historical":
             expected_length = 2014 - 1970 + 1  # GARD-LENS EC-Earth3
             assert len(ds["time"]) == expected_length, (
                 f"ds length is {len(ds['time'])}, expected {expected_length}"
@@ -492,9 +669,7 @@ def gev_fit_single(
         # Fix LOCA CESM mapping
         if ensemble == "LOCA2" and gcm == "CESM2-LENS":
             member_name = (
-                loca_gard_mapping[member]
-                if member in loca_gard_mapping.keys()
-                else member
+                loca_gard_mapping[member] if member in loca_gard_mapping.keys() else member
             )
         else:
             member_name = member
@@ -506,6 +681,8 @@ def gev_fit_single(
                 "ensemble": [ensemble],
             }
         )
+        # Make sure not all NaNs
+        assert np.count_nonzero(~np.isnan(ds_out["loc"])), "all NaNs in fit"
         ds_out.to_netcdf(f"{store_path}/{store_name}")
     # Log if error
     except Exception as e:
@@ -526,7 +703,7 @@ def gev_fit_all(
     fit_method,
     periods_for_level,
     levels_for_period,
-    future_years,
+    proj_years,
     hist_years,
 ):
     """
@@ -545,7 +722,7 @@ def gev_fit_all(
     for index, row in df_loca.iterrows():
         # Get info
         gcm, member, ssp = row["gcm"], row["member"], row["ssp"]
-        years = hist_years if ssp == "historical" else future_years
+        years = hist_years if ssp == "historical" else proj_years
 
         if years is not None:
             out = dask.delayed(gev_fit_single)(
@@ -574,7 +751,7 @@ def gev_fit_all(
 
         # Fit for historical and ssp
         for ssp_id in ["historical", ssp]:
-            years = hist_years if ssp_id == "historical" else future_years
+            years = hist_years if ssp_id == "historical" else proj_years
             if years is not None:
                 out = dask.delayed(gev_fit_single)(
                     ensemble=ensemble,
@@ -605,7 +782,7 @@ def gev_fit_all(
 
         # Do for historical and ssp
         for ssp_id in ["historical", ssp]:
-            years = hist_years if ssp_id == "historical" else future_years
+            years = hist_years if ssp_id == "historical" else proj_years
             if years is not None:
                 out = dask.delayed(gev_fit_single)(
                     ensemble=ensemble,
@@ -629,6 +806,14 @@ def gev_fit_all(
 ###########################
 # Fit GEV to single city
 ###########################
+def check_data_length(data, ensemble, gcm, ssp, years):
+    # Check length is as expected
+    if ensemble == "GARD-LENS" and gcm == "EC-Earth3" and ssp == "historical":
+        expected_length = 2014 - 1970 + 1  # GARD-LENS EC-Earth3
+        assert len(data) == expected_length, f"ds length is {len(data)}, expected {expected_length}"
+    else:
+        expected_length = years[1] - years[0] + 1
+        assert len(data) == expected_length, f"ds length is {len(data)}, expected {expected_length}"
 
 
 def fit_gev_city(
@@ -636,11 +821,18 @@ def fit_gev_city(
     metric_id,
     ensemble,
     gcm,
-    member,
     ssp,
-    years,
-    stationary,
+    member,
+    hist_slice,
+    proj_slice,
     fit_method,
+    stationary,
+    periods_for_level,
+    years=None,
+    bootstrap="parametric",
+    return_period_years=None,
+    return_period_diffs=None,
+    n_boot=1000,
     project_data_path=project_data_path,
 ):
     """
@@ -648,104 +840,330 @@ def fit_gev_city(
     """
 
     # Read and select data
-    df = pd.read_csv(
-        f"{project_data_path}/metrics/cities/{city}_{metric_id}.csv"
-    )
+    df = pd.read_csv(f"{project_data_path}/metrics/cities/{city}_{metric_id}.csv")
 
-    df_sel = df[
-        (df["ensemble"] == ensemble)
-        & (df["gcm"] == gcm)
-        & (df["member"] == member)
-        & (df["ssp"] == ssp)
-        & (df["time"] >= years[0])
-        & (df["time"] <= years[1])
-    ]
+    if ensemble == "LOCA2":
+        ssp_sel = "historical"
+    else:
+        ssp_sel = ssp
 
-    # Skip invalid SSP-years combinations
-    if len(df_sel) == 0:
-        return None
+    if stationary:
+        df_hist = df[
+            (df["ensemble"] == ensemble)
+            & (df["gcm"] == gcm)
+            & (df["member"] == member)
+            & (df["ssp"] == ssp_sel)
+            & (df["time"] >= hist_slice[0])
+            & (df["time"] <= hist_slice[1])
+        ]
+
+        df_proj = df[
+            (df["ensemble"] == ensemble)
+            & (df["gcm"] == gcm)
+            & (df["member"] == member)
+            & (df["ssp"] == ssp)
+            & (df["time"] >= proj_slice[0])
+            & (df["time"] <= proj_slice[1])
+        ]
+    else:
+        df_sel = df[
+            (df["ensemble"] == ensemble)
+            & (df["gcm"] == gcm)
+            & (df["member"] == member)
+            & (df["ssp"].isin([ssp_sel, ssp]))
+            & (df["time"] >= years[0])
+            & (df["time"] <= years[1])
+        ]
 
     # Info
     agg, var_id = metric_id.split("_")
-    data = df_sel[var_id].to_numpy()
+
+    if stationary:
+        hist_data = df_hist[var_id].to_numpy()
+        proj_data = df_proj[var_id].to_numpy()
+    else:
+        data = df_sel[var_id].to_numpy()
+
     if agg == "min":
         scalar = -1.0
     else:
         scalar = 1.0
 
     # Check length is as expected
-    if ensemble == "GARD-LENS" and gcm == "ecearth3" and ssp == "historical":
-        expected_length = 2014 - 1970 + 1  # GARD-LENS EC-Earth3
-        assert len(df_sel) == expected_length, (
-            f"ds length is {len(df_sel)}, expected {expected_length}"
-        )
+    if stationary:
+        check_data_length(hist_data, ensemble, gcm, "historical", hist_slice)
+        check_data_length(proj_data, ensemble, gcm, ssp, proj_slice)
     else:
-        expected_length = years[1] - years[0] + 1
-        assert len(df_sel) == expected_length, (
-            f"ds length is {len(df_sel)}, expected {expected_length}"
-        )
+        check_data_length(data, ensemble, gcm, ssp, years)
 
     # Do the fit
     if stationary:
-        res = _fit_gev_1d_stationary(
-            data=scalar * data,
-            expected_length=expected_length,
+        hist_params = _fit_gev_1d_stationary(
+            data=scalar * hist_data,
+            fit_method=fit_method,
+        )
+        proj_params = _fit_gev_1d_stationary(
+            data=scalar * proj_data,
             fit_method=fit_method,
         )
     else:
-        res = _fit_gev_1d_nonstationary(
+        params = _fit_gev_1d_nonstationary(
             data=scalar * data,
             years=years,
             fit_method=fit_method,
         )
 
-    # Return a dataframe
+    # Do the bootstrap if desried
+    if bootstrap == "parametric":
+        if stationary:
+            bootstrap_params_hist, bootstrap_rls_hist = _gev_parametric_bootstrap_1d_stationary(
+                loc=hist_params[0],
+                scale=hist_params[1],
+                shape=hist_params[2],
+                n_data=len(hist_data),
+                n_boot=n_boot,
+                fit_method=fit_method,
+                periods_for_level=periods_for_level,
+                return_samples=True,
+            )
+            bootstrap_params_proj, bootstrap_rls_proj = _gev_parametric_bootstrap_1d_stationary(
+                loc=proj_params[0],
+                scale=proj_params[1],
+                shape=proj_params[2],
+                n_data=len(proj_data),
+                n_boot=n_boot,
+                fit_method=fit_method,
+                periods_for_level=periods_for_level,
+                return_samples=True,
+            )
+        else:
+            bootstrap_params, bootstrap_rls, bootsrap_rl_diffs = (
+                _gev_parametric_bootstrap_1d_nonstationary(
+                    params=params,
+                    years=years,
+                    n_data=len(data),
+                    n_boot=n_boot,
+                    fit_method=fit_method,
+                    periods_for_level=periods_for_level,
+                    return_period_years=return_period_years,
+                    return_period_diffs=return_period_diffs,
+                )
+            )
+
+    ## Parameter results
+    if stationary:
+        # Historical
+        hist_params_p025 = np.percentile(bootstrap_params_hist, 2.5, axis=0)
+        hist_params_p975 = np.percentile(bootstrap_params_hist, 97.5, axis=0)
+
+        # Projection
+        proj_params_p025 = np.percentile(bootstrap_params_proj, 2.5, axis=0)
+        proj_params_p975 = np.percentile(bootstrap_params_proj, 97.5, axis=0)
+    else:
+        params_p025 = np.percentile(bootstrap_params, 2.5, axis=0)
+        params_p975 = np.percentile(bootstrap_params, 97.5, axis=0)
+
+    # Combine
     if stationary:
         df_res = pd.DataFrame(
             {
-                "ensemble": [ensemble],
-                "gcm": [gcm],
-                "member": [member],
-                "ssp": [ssp],
-                "loc": [res[0]],
-                "scale": [res[1]],
-                "shape": [res[2]],
+                "quantile": ["main", "p025", "p975"],
+                "ensemble": [ensemble, ensemble, ensemble],
+                "gcm": [gcm, gcm, gcm],
+                "member": [member, member, member],
+                "ssp": [ssp, ssp, ssp],
+                "loc_hist": [hist_params[0], hist_params_p025[0], hist_params_p975[0]],
+                "scale_hist": [hist_params[1], hist_params_p025[1], hist_params_p975[1]],
+                "shape_hist": [hist_params[2], hist_params_p025[2], hist_params_p975[2]],
+                "loc_proj": [proj_params[0], proj_params_p025[0], proj_params_p975[0]],
+                "scale_proj": [proj_params[1], proj_params_p025[1], proj_params_p975[1]],
+                "shape_proj": [proj_params[2], proj_params_p025[2], proj_params_p975[2]],
             }
         )
     else:
         df_res = pd.DataFrame(
             {
-                "ensemble": [ensemble],
-                "gcm": [gcm],
-                "member": [member],
-                "ssp": [ssp],
-                "loc_intcp": [res[0]],
-                "loc_trend": [res[1]],
-                "scale": [res[2]],
-                "shape": [res[3]],
+                "quantile": ["main", "p025", "p975"],
+                "ensemble": [ensemble, ensemble, ensemble],
+                "gcm": [gcm, gcm, gcm],
+                "member": [member, member, member],
+                "ssp": [ssp, ssp, ssp],
+                "loc_intcp": [params[0], params_p025[0], params_p975[0]],
+                "loc_trend": [params[1], params_p025[1], params_p975[1]],
+                "scale": [params[2], params_p025[2], params_p975[2]],
+                "shape": [params[3], params_p025[3], params_p975[3]],
             }
         )
 
-    return df_res
+    ## Return level results
+    if stationary:
+        # Get return levels
+        return_levels_hist_main = scalar * estimate_return_level(
+            np.array(periods_for_level), *hist_params
+        )
+        return_levels_hist_p025 = np.percentile(scalar * bootstrap_rls_hist, 2.5, axis=0)
+        return_levels_hist_p975 = np.percentile(scalar * bootstrap_rls_hist, 97.5, axis=0)
+
+        return_levels_proj_main = scalar * estimate_return_level(
+            np.array(periods_for_level), *proj_params
+        )
+        return_levels_proj_p025 = np.percentile(scalar * bootstrap_rls_proj, 2.5, axis=0)
+        return_levels_proj_p975 = np.percentile(scalar * bootstrap_rls_proj, 97.5, axis=0)
+
+        # Change
+        return_levels_change_main = return_levels_proj_main - return_levels_hist_main
+        return_levels_change_p025 = np.percentile(
+            scalar * (bootstrap_rls_proj - bootstrap_rls_hist), 2.5, axis=0
+        )
+        return_levels_change_p975 = np.percentile(
+            scalar * (bootstrap_rls_proj - bootstrap_rls_hist), 97.5, axis=0
+        )
+        # Store in dataframe
+        df_return_levels = pd.DataFrame(
+            {
+                "quantile": ["main", "p025", "p975"],
+                "ensemble": [ensemble, ensemble, ensemble],
+                "gcm": [gcm, gcm, gcm],
+                "member": [member, member, member],
+                "ssp": [ssp, ssp, ssp],
+                **{
+                    f"{period}yr_return_level_hist": [
+                        return_levels_hist_main[i],
+                        return_levels_hist_p025[i],
+                        return_levels_hist_p975[i],
+                    ]
+                    for i, period in enumerate(periods_for_level)
+                },
+                **{
+                    f"{period}yr_return_level_proj": [
+                        return_levels_proj_main[i],
+                        return_levels_proj_p025[i],
+                        return_levels_proj_p975[i],
+                    ]
+                    for i, period in enumerate(periods_for_level)
+                },
+                **{
+                    f"{period}yr_return_level_change": [
+                        return_levels_change_main[i],
+                        return_levels_change_p025[i],
+                        return_levels_change_p975[i],
+                    ]
+                    for i, period in enumerate(periods_for_level)
+                },
+            }
+        )
+    else:
+        # Get return levels
+        return_levels_main = [
+            estimate_return_level(
+                period,
+                params[0] + params[1] * (return_period_year - years[0]),
+                params[2],
+                params[3],
+            )
+            for period in periods_for_level
+            for return_period_year in return_period_years
+        ]
+        return_levels_p025 = np.percentile(scalar * bootstrap_rls, 2.5, axis=0)
+        return_levels_p975 = np.percentile(scalar * bootstrap_rls, 97.5, axis=0)
+
+        # Store in dataframe
+        df_return_levels = pd.DataFrame(
+            {
+                "quantile": ["main", "p025", "p975"],
+                "ensemble": [ensemble, ensemble, ensemble],
+                "gcm": [gcm, gcm, gcm],
+                "member": [member, member, member],
+                "ssp": [ssp, ssp, ssp],
+                **{
+                    f"{period}yr_return_level_{return_period_year}": [
+                        return_levels_main[i],
+                        return_levels_p025[i],
+                        return_levels_p975[i],
+                    ]
+                    for i, period in enumerate(periods_for_level)
+                    for return_period_year in return_period_years
+                },
+            }
+        )
+        # Get return level differences
+        return_level_diffs = [
+            estimate_return_level(
+                period,
+                params[0] + params[1] * (return_period_diff[1] - return_period_diff[0]),
+                params[2],
+                params[3],
+            )
+            for period in periods_for_level
+            for return_period_diff in return_period_diffs
+        ]
+        return_level_diffs_p025 = np.percentile(bootsrap_rl_diffs, 2.5, axis=0)
+        return_level_diffs_p975 = np.percentile(bootsrap_rl_diffs, 97.5, axis=0)
+
+        # Store in dataframe
+        df_return_level_diffs = pd.DataFrame(
+            {
+                "quantile": ["main", "p025", "p975"],
+                "ensemble": [ensemble, ensemble, ensemble],
+                "gcm": [gcm, gcm, gcm],
+                "member": [member, member, member],
+                "ssp": [ssp, ssp, ssp],
+                **{
+                    f"{period}yr_return_level_{return_period_diff[1]}-{return_period_diff[0]}": [
+                        return_level_diffs[i],
+                        return_level_diffs_p025[i],
+                        return_level_diffs_p975[i],
+                    ]
+                    for i, period in enumerate(periods_for_level)
+                    for return_period_diff in return_period_diffs
+                },
+            }
+        )
+
+    if stationary:
+        return pd.merge(
+            df_res, df_return_levels, on=["quantile", "ensemble", "gcm", "member", "ssp"]
+        )
+    else:
+        return pd.merge(
+            df_res,
+            pd.merge(
+                df_return_levels,
+                df_return_level_diffs,
+                on=["quantile", "ensemble", "gcm", "member", "ssp"],
+            ),
+            on=["quantile", "ensemble", "gcm", "member", "ssp"],
+        )
 
 
 def fit_ensemble_gev_city(
     city,
     metric_id,
-    years,
     stationary,
     fit_method,
+    periods_for_level,
+    bootstrap="parametric",
+    hist_slice=[1950, 2014],
+    proj_slice=[2050, 2100],
+    years=None,
+    return_period_years=None,
+    return_period_diffs=None,
+    store=True,
     project_data_path=project_data_path,
 ):
     """
     Fit city GEV across the entire ensemble.
     """
     # Get unique combos
-    df = pd.read_csv(
-        f"{project_data_path}/metrics/cities/{city}_{metric_id}.csv"
-    )
+    df = pd.read_csv(f"{project_data_path}/metrics/cities/{city}_{metric_id}.csv")
     df = df.set_index(["ensemble", "gcm", "member", "ssp"]).sort_index()
     combos = df.index.unique()
+
+    # Check if done
+    stat_str = "stat" if stationary else "nonstat"
+    file_name = f"{city}_{metric_id}_{hist_slice[0]}-{hist_slice[1]}_{proj_slice[0]}-{proj_slice[1]}_{fit_method}_{stat_str}.csv"
+    if os.path.exists(f"{project_data_path}/extreme_value/cities/original_grid/freq/{file_name}"):
+        return None
 
     # Output df
     df_out = []
@@ -753,21 +1171,42 @@ def fit_ensemble_gev_city(
     # Loop through
     for combo in combos:
         ensemble, gcm, member, ssp = combo
+        if ssp == "historical":
+            continue
         try:
             df_tmp = fit_gev_city(
                 city=city,
                 metric_id=metric_id,
                 ensemble=ensemble,
                 gcm=gcm,
-                member=member,
                 ssp=ssp,
-                years=years,
-                stationary=stationary,
+                member=member,
+                hist_slice=hist_slice,
+                proj_slice=proj_slice,
                 fit_method=fit_method,
+                stationary=stationary,
+                periods_for_level=periods_for_level,
+                years=years,
+                bootstrap=bootstrap,
+                return_period_years=return_period_years,
+                return_period_diffs=return_period_diffs,
             )
             df_out.append(df_tmp)
-        except:
-            print(ensemble, gcm, ssp, member)
+        except Exception as e:
+            except_path = f"{project_code_path}/scripts/logs/gev_freq/city"
+            with open(
+                f"{except_path}/{city}_{ensemble}_{gcm}_{member}_{ssp}_{metric_id}_{stat_str}_{fit_method}.txt",
+                "w",
+            ) as f:
+                f.write(str(e))
 
-    # Concat and return
-    return pd.concat(df_out)
+    # Concat
+    df_out = pd.concat(df_out, ignore_index=True)
+
+    # Store or return
+    if store:
+        df_out.to_csv(
+            f"{project_data_path}/extreme_value/cities/original_grid/freq/{file_name}", index=False
+        )
+    else:
+        return df_out

@@ -30,15 +30,20 @@ def plot_uc_map(
     proj_slice,
     hist_slice,
     return_period,
+    grid,
+    fit_method,
+    stationary,
+    regrid_method="nearest",
     fig=None,
     axs=None,
-    regrid_method="nearest",
     norm=None,
     cbar=True,
+    vmax_uc=40,
     title="auto",
 ):
     # Read
-    file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{return_period}rl_{regrid_method}.nc"
+    stat_str = "stat" if stationary else "nonstat"
+    file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{return_period}yr_return_level_{fit_method}_{stat_str}_{grid}grid_{regrid_method}.nc"
     uc = xr.open_dataset(file_path)
 
     # Mask out locations without all three ensembles
@@ -110,7 +115,7 @@ def plot_uc_map(
         vmax = np.round(uc[norm].quantile(0.95).to_numpy(), decimals=0)
 
     if norm is not None:
-        vmin_uc, vmax_uc = 0.0, 40
+        vmin_uc, vmax_uc = 0.0, vmax_uc
         scale_factor = 100.0
         cmap_uc = "YlGn"
     else:
@@ -830,11 +835,12 @@ def plot_city(
     city,
     metric_id,
     return_period,
+    stationary,
+    fit_method,
     ax,
     xlabel,
     title,
     legend,
-    regrid_method="nearest",
     proj_slice="2050-2100",
     hist_slice="1950-2014",
     plot_diff=False,
@@ -842,9 +848,10 @@ def plot_city(
     limits=None,
 ):
     # Read
-    file_name = f"{city}_{metric_id}_{proj_slice}_{hist_slice}_{return_period}rl_{regrid_method}.csv"
+    stat_str = "stat" if stationary else "nonstat"
+    file_name = f"{city}_{metric_id}_{proj_slice}_{hist_slice}_return_levels_{fit_method}_{stat_str}.csv"
     df_all = pd.read_csv(
-        f"{project_data_path}/extreme_value/cities/loca_grid/{file_name}"
+        f"{project_data_path}/extreme_value/cities/original_grid/freq/{file_name}"
     )
 
     # Plot

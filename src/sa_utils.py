@@ -41,22 +41,13 @@ def read_loca(
     ds_loca = xr.concat(
         [
             xr.combine_by_coords(
-                [
-                    xr.open_dataset(file)[cols_to_keep]
-                    for file in loca_ssp245_files
-                ]
+                [xr.open_dataset(file)[cols_to_keep] for file in loca_ssp245_files]
             ),
             xr.combine_by_coords(
-                [
-                    xr.open_dataset(file)[cols_to_keep]
-                    for file in loca_ssp370_files
-                ]
+                [xr.open_dataset(file)[cols_to_keep] for file in loca_ssp370_files]
             ),
             xr.combine_by_coords(
-                [
-                    xr.open_dataset(file)[cols_to_keep]
-                    for file in loca_ssp585_files
-                ]
+                [xr.open_dataset(file)[cols_to_keep] for file in loca_ssp585_files]
             ),
         ],
         dim="ssp",
@@ -233,13 +224,8 @@ def compute_gcm_uc(ds_loca, ds_gard, ds_star, var_name, min_members=5):
     # Note: due to the regridding, there are some gridpoints where the
     # range is computed across only 1 ensemble, so we filter any below
     # the maximum count
-    gcm_uc = xr.concat(
-        [gard_gcm_range, star_gcm_range, loca_gcm_range], dim="ensemble"
-    )
-    uq_maxs = (
-        gcm_uc.count(dim=["ensemble", "ssp"])
-        == gcm_uc.count(dim=["ensemble", "ssp"]).max()
-    )
+    gcm_uc = xr.concat([gard_gcm_range, star_gcm_range, loca_gcm_range], dim="ensemble")
+    uq_maxs = gcm_uc.count(dim=["ensemble", "ssp"]) == gcm_uc.count(dim=["ensemble", "ssp"]).max()
     gcm_uc = gcm_uc.where(uq_maxs).mean(dim=["ensemble", "ssp"])
 
     return gcm_uc
@@ -280,12 +266,8 @@ def compute_ssp_uc(ds_loca, ds_gard, ds_star, var_name, by_gcm=False):
 
     # Combine and average over ensembles
     # Again filter due to regridding issues
-    ssp_uc = xr.concat(
-        [loca_ssp_range, star_ssp_range, gard_ssp_range], dim="ensemble"
-    )
-    uq_maxs = (
-        ssp_uc.count(dim="ensemble") == ssp_uc.count(dim="ensemble").max()
-    )
+    ssp_uc = xr.concat([loca_ssp_range, star_ssp_range, gard_ssp_range], dim="ensemble")
+    uq_maxs = ssp_uc.count(dim="ensemble") == ssp_uc.count(dim="ensemble").max()
     if by_gcm:
         ssp_uc = ssp_uc.where(uq_maxs).mean(dim=["ensemble", "gcm"])
     else:
@@ -299,9 +281,9 @@ def ensemble_iv_range(ds, min_members, var_name):
     Internal variability uncertainty: range across members
     """
     combos_to_include = ds[var_name].count(dim=["member"]) >= min_members
-    iv_range = (
-        ds[var_name].max(dim="member") - ds[var_name].min(dim="member")
-    ).where(combos_to_include)
+    iv_range = (ds[var_name].max(dim="member") - ds[var_name].min(dim="member")).where(
+        combos_to_include
+    )
     return iv_range.where(iv_range != 0.0)
 
 
@@ -318,9 +300,7 @@ def compute_iv_uc(ds_loca, ds_gard, ds_star, var_name, min_members=5):
     # Again filter due to regridding issues -- here there are some gridpoints where
     # I think the GEV fitting is running into invalid L-moments, so I use a less strict
     # filter
-    iv_uc = xr.concat(
-        [gard_iv_range, star_iv_range, loca_iv_range], dim="ensemble"
-    )
+    iv_uc = xr.concat([gard_iv_range, star_iv_range, loca_iv_range], dim="ensemble")
     uq_maxs = (
         iv_uc.count(dim=["ensemble", "gcm", "ssp"])
         >= iv_uc.count(dim=["ensemble", "gcm", "ssp"]).max() - 1.0
@@ -346,9 +326,7 @@ def compute_dsc_uc(ds_loca, ds_gard, ds_star, var_name):
         > 1
     ).to_dataframe()
 
-    combos_to_include = combos_to_include[
-        combos_to_include[var_name]
-    ].reset_index()
+    combos_to_include = combos_to_include[combos_to_include[var_name]].reset_index()
 
     # Get unique GCMs, SSPs, members
     gcms_include = np.sort(combos_to_include["gcm"].unique())
@@ -371,15 +349,9 @@ def compute_dsc_uc(ds_loca, ds_gard, ds_star, var_name):
     # Combine all
     ds_combined = xr.merge(
         [
-            xr.combine_by_coords(
-                [ds, ds_star], join="left", combine_attrs="drop_conflicts"
-            ),
-            xr.combine_by_coords(
-                [ds, ds_gard], join="left", combine_attrs="drop_conflicts"
-            ),
-            xr.combine_by_coords(
-                [ds, ds_loca], join="left", combine_attrs="drop_conflicts"
-            ),
+            xr.combine_by_coords([ds, ds_star], join="left", combine_attrs="drop_conflicts"),
+            xr.combine_by_coords([ds, ds_gard], join="left", combine_attrs="drop_conflicts"),
+            xr.combine_by_coords([ds, ds_loca], join="left", combine_attrs="drop_conflicts"),
         ],
         combine_attrs="drop_conflicts",
     )
@@ -414,14 +386,10 @@ def compute_tot_uc(ds_loca, ds_gard, ds_star, var_name):
     uc_range = ds_stacked.max(dim="z") - ds_stacked.min(dim="z")
 
     # 99% width
-    uc_99w = ds_stacked.quantile(0.995, dim="z") - ds_stacked.quantile(
-        0.005, dim="z"
-    )
+    uc_99w = ds_stacked.quantile(0.995, dim="z") - ds_stacked.quantile(0.005, dim="z")
 
     # 95% width
-    uc_95w = ds_stacked.quantile(0.975, dim="z") - ds_stacked.quantile(
-        0.025, dim="z"
-    )
+    uc_95w = ds_stacked.quantile(0.975, dim="z") - ds_stacked.quantile(0.025, dim="z")
 
     return uc_range, uc_99w, uc_95w
 
@@ -478,29 +446,19 @@ def uc_all(
 
     # Compute change if desired
     if hist_slice is not None:
-        ds_loca = (ds_loca - ds_loca.sel(ssp="historical")).drop_sel(
-            ssp="historical"
-        )
-        ds_gard = (ds_gard - ds_gard.sel(ssp="historical")).drop_sel(
-            ssp="historical"
-        )
-        ds_star = (ds_star - ds_star.sel(ssp="historical")).drop_sel(
-            ssp="historical"
-        )
+        ds_loca = (ds_loca - ds_loca.sel(ssp="historical")).drop_sel(ssp="historical")
+        ds_gard = (ds_gard - ds_gard.sel(ssp="historical")).drop_sel(ssp="historical")
+        ds_star = (ds_star - ds_star.sel(ssp="historical")).drop_sel(ssp="historical")
 
     # Compute total uncertainty
-    uc_range, uc_99w, uc_95w = compute_tot_uc(
-        ds_loca, ds_gard, ds_star, col_name
-    )
+    uc_range, uc_99w, uc_95w = compute_tot_uc(ds_loca, ds_gard, ds_star, col_name)
 
     # Compute GCM uncertainty
     gcm_uc = compute_gcm_uc(ds_loca, ds_gard, ds_star, col_name)
 
     # Compute SSP uncertainty
     ssp_uc = compute_ssp_uc(ds_loca, ds_gard, ds_star, col_name)
-    ssp_uc_by_gcm = compute_ssp_uc(
-        ds_loca, ds_gard, ds_star, col_name, by_gcm=True
-    )
+    ssp_uc_by_gcm = compute_ssp_uc(ds_loca, ds_gard, ds_star, col_name, by_gcm=True)
     # Compute internal variability uncertainty
     iv_uc = compute_iv_uc(ds_loca, ds_gard, ds_star, col_name)
 
