@@ -6,17 +6,13 @@ import xarray_regrid
 loca_lats = np.linspace(23.90625, 53.46875, 474)
 loca_lons = np.linspace(234.53125, 293.46875, 944)
 
-loca_grid = xr.Dataset(
-    coords={"lat": ("lat", loca_lats), "lon": ("lon", loca_lons)}
-)
+loca_grid = xr.Dataset(coords={"lat": ("lat", loca_lats), "lon": ("lon", loca_lons)})
 
 # GARD-LENS grid
 gard_lats = np.arange(25.125, 49.0, 0.125)  # GARD contains NaNs above 49N
 gard_lons = np.linspace(-124.875, -67.0, 464)
 
-gard_grid = xr.Dataset(
-    coords={"lat": ("lat", gard_lats), "lon": ("lon", gard_lons)}
-)
+gard_grid = xr.Dataset(coords={"lat": ("lat", gard_lats), "lon": ("lon", gard_lons)})
 
 
 def regrid(ds_in, target, method, nan_threshold=0.5):
@@ -35,9 +31,7 @@ def regrid(ds_in, target, method, nan_threshold=0.5):
 
     # Regrid
     if method == "conservative":
-        ds_out = ds_in.regrid.conservative(
-            ds_target, nan_threshold=nan_threshold
-        )
+        ds_out = ds_in.regrid.conservative(ds_target, nan_threshold=nan_threshold)
     elif method == "nearest":
         ds_out = ds_in.regrid.nearest(ds_target)
 

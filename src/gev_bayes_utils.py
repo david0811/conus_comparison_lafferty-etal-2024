@@ -61,7 +61,9 @@ def _fit_bayesian_gev(
             xi = pm.Normal("shape", mu=0.0, sigma=shape_sigma)
 
             # Estimation
-            gev = pmx.GenExtreme("gev", mu=mu, sigma=sigma, xi=xi, observed=scalar * data)
+            gev = pmx.GenExtreme(
+                "gev", mu=mu, sigma=sigma, xi=xi, observed=scalar * data
+            )
 
             # Return level
             for p in return_periods:

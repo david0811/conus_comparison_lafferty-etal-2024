@@ -29,10 +29,12 @@ def plot_uc_map(
     metric_id,
     proj_slice,
     hist_slice,
+    plot_col,
     return_period,
     grid,
     fit_method,
     stationary,
+    analysis_type,
     regrid_method="nearest",
     fig=None,
     axs=None,
@@ -42,8 +44,12 @@ def plot_uc_map(
     title="auto",
 ):
     # Read
-    stat_str = "stat" if stationary else "nonstat"
-    file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{return_period}yr_return_level_{fit_method}_{stat_str}_{grid}grid_{regrid_method}.nc"
+    if analysis_type == "trend":
+        file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{plot_col}_{grid}grid_{regrid_method}.nc"
+    elif analysis_type == "extreme_value":
+        stat_str = "stat" if stationary else "nonstat"
+        file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{return_period}yr_return_level_{fit_method}_{stat_str}_{grid}grid_{regrid_method}.nc"
+    
     uc = xr.open_dataset(file_path)
 
     # Mask out locations without all three ensembles
@@ -79,6 +85,10 @@ def plot_uc_map(
         "max_hdd": "[degree days]",
         "max_pr": "[mm]",
         "min_tasmin": "[C]",
+        "avg_tas": "[C/decade]",
+        "sum_pr": "[mm/decade]",
+        "sum_cdd": "[degree days per decade]",
+        "sum_hdd": "[degree days per decade]",
     }
 
     title_labels = {
@@ -87,6 +97,10 @@ def plot_uc_map(
         "max_hdd": f"{return_period} year return level: annual 1-day maximum HDD",
         "max_pr": f"{return_period} year return level: annual 1-day maximum precipitation",
         "min_tasmin": f"{return_period} year return level: annual minimum temperature",
+        "avg_tas": "Annual average temperature",
+        "sum_pr": "Annual total precipitation",
+        "sum_cdd": "Annual total cooling degree days",
+        "sum_hdd": "Annual total heating degree days",
     }
 
     norm_labels = {
@@ -99,16 +113,19 @@ def plot_uc_map(
         fig, axs = plt.subplots(
             1,
             5,
-            figsize=(12, 5),
+            figsize=(12, 3),
             layout="constrained",
             subplot_kw=dict(projection=ccrs.LambertConformal()),
         )
 
     # Plot details
-    if metric_id in ["max_pr", "min_tasmin", "max_hdd"]:
+    if analysis_type == "trend":
+        uc[norm] = uc[norm] * 10 # decadal trends
+
+    if metric_id in ["max_pr", "sum_pr", "min_tasmin", "max_hdd", "sum_hdd"]:
         cmap = "Blues"
-        vmin = np.round(uc[norm].min().to_numpy(), decimals=-1)
-        vmax = np.round(uc[norm].quantile(0.95).to_numpy(), decimals=-1)
+        vmin = np.round(uc[norm].min().to_numpy(), decimals=0)
+        vmax = np.round(uc[norm].quantile(0.95).to_numpy(), decimals=0)
     else:
         cmap = "Oranges"
         vmin = np.round(uc[norm].min().to_numpy(), decimals=0)
@@ -142,9 +159,7 @@ def plot_uc_map(
     )
     # Tidy
     ax.coastlines()
-    gl = ax.gridlines(
-        draw_labels=False, x_inline=False, rotate_labels=False, alpha=0.2
-    )
+    gl = ax.gridlines(draw_labels=False, x_inline=False, rotate_labels=False, alpha=0.2)
     ax.add_feature(cfeature.STATES, edgecolor="black", linewidth=0.5)
     ax.add_feature(cfeature.BORDERS, edgecolor="black", linewidth=0.5)
     ax.set_extent([-120, -73, 22, 51], ccrs.Geodetic())
@@ -204,7 +219,7 @@ def plot_uc_map(
 # 'Qualitative' plot
 #######################
 def plot_conf_intvs(
-    df, plot_col, positions, color, ax, limits=None, lw=1.5, s=20
+    df, plot_col, positions, color, ax, limits=None, lw=1.5, s=20, alpha=0.8
 ):
     # Filter data below limits if desired
     if limits is not None:
@@ -214,7 +229,7 @@ def plot_conf_intvs(
 
     # Point for median
     ax.scatter(
-        x=[data[data["quantile"] == "0.5"][plot_col].values[0]],
+        x=[data[data["quantile"] == "main"][plot_col].values[0]],
         y=positions,
         c=color,
         s=s,
@@ -224,13 +239,14 @@ def plot_conf_intvs(
     # Line for 95% CI
     ax.plot(
         [
-            data[data["quantile"] == "0.025"][plot_col].values[0],
-            data[data["quantile"] == "0.957"][plot_col].values[0],
+            data[data["quantile"] == "p025"][plot_col].values[0],
+            data[data["quantile"] == "p975"][plot_col].values[0],
         ],
         [positions, positions],
         color=color,
         linewidth=lw,
         zorder=4,
+        alpha=alpha,
     )
 
 
@@ -251,9 +267,7 @@ def plot_boxplot(df, plot_col, positions, color, ax, limits=None, lw=1.5):
         capprops=dict(color=color, linewidth=lw),
         boxprops=dict(color=color, linewidth=lw),
         whiskerprops=dict(color=color, linewidth=lw),
-        flierprops=dict(
-            markerfacecolor=color, linestyle="none", markeredgecolor=color
-        ),
+        flierprops=dict(markerfacecolor=color, linestyle="none", markeredgecolor=color),
         medianprops=dict(color="white", linewidth=lw, zorder=5),
         vert=False,
         showmeans=False,
@@ -283,9 +297,7 @@ def plot_response_differences(
             if min_filter.sum() > 0:
                 # Plot forced responses
                 gcms = min_filter[min_filter].index
-                plot_df = pd.DataFrame(
-                    df_sel.groupby("gcm")[plot_col].mean().loc[gcms]
-                )
+                plot_df = pd.DataFrame(df_sel.groupby("gcm")[plot_col].mean().loc[gcms])
                 ax.scatter(
                     y=[idx] * len(plot_df),
                     x=plot_df[plot_col],
@@ -299,9 +311,7 @@ def plot_response_differences(
                     color=ssp_colors[ssp],
                 )
                 idx += 1
-                ylabels.append(
-                    f"{ensemble}\n{ssp_labels[ssp]} ({len(plot_df)})"
-                )
+                ylabels.append(f"{ensemble}\n{ssp_labels[ssp]} ({len(plot_df)})")
 
     # Legend
     if legend:
@@ -385,9 +395,7 @@ def plot_scenario_differences(df, plot_col, xlabel, ax=None, min_members=5):
     ax.legend(handles=legend_elements)
 
 
-def plot_scenario_differences_by_gcm(
-    df, plot_col, xlabel, ax=None, min_members=5
-):
+def plot_scenario_differences_by_gcm(df, plot_col, xlabel, ax=None, min_members=5):
     # Create a new figure and axis if none are provided
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 6))
@@ -404,9 +412,7 @@ def plot_scenario_differences_by_gcm(
             for gcm in gcms:
                 # Ensure at least 2 SSPs with minimum members
                 df_sel = df[(df["ensemble"] == ensemble) & (df["gcm"] == gcm)]
-                min_filter = (
-                    df_sel.groupby("ssp")[plot_col].count() >= min_members
-                )
+                min_filter = df_sel.groupby("ssp")[plot_col].count() >= min_members
                 if min_filter.sum() > 1:
                     # Plot line connecting values
                     ax.plot(
@@ -419,9 +425,7 @@ def plot_scenario_differences_by_gcm(
 
                     # Plot forced response for each SSP
                     for ssp in ssps:
-                        plot_val = df_sel[df_sel["ssp"] == ssp][
-                            plot_col
-                        ].mean()
+                        plot_val = df_sel[df_sel["ssp"] == ssp][plot_col].mean()
                         ax.scatter(
                             y=[idx],
                             x=plot_val,
@@ -455,9 +459,7 @@ def plot_scenario_differences_by_gcm(
     ax.legend(handles=legend_elements)
 
 
-def plot_iv_differences(
-    df, plot_col, xlabel, ax=None, min_members=5, legend=False
-):
+def plot_iv_differences(df, plot_col, xlabel, ax=None, min_members=5, legend=False):
     # Create a new figure and axis if none are provided
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 6))
@@ -477,9 +479,7 @@ def plot_iv_differences(
                 for gcm in gcms:
                     data = df_sel[df_sel["gcm"] == gcm]
                     if len(data) > 10:
-                        plot_boxplot(
-                            data, plot_col, [idx], ssp_colors[ssp], ax
-                        )
+                        plot_boxplot(data, plot_col, [idx], ssp_colors[ssp], ax)
                     else:
                         ax.scatter(
                             y=[idx] * len(data),
@@ -553,9 +553,7 @@ def plot_ds_differences(df, plot_col, xlabel, ax=None, ssp_legend=False):
                     # Plot values
                     ax.scatter(
                         y=[y_pos + y_incs[idy]],
-                        x=df_sel_ssp[df_sel_ssp["ensemble"] == ensemble][
-                            plot_col
-                        ],
+                        x=df_sel_ssp[df_sel_ssp["ensemble"] == ensemble][plot_col],
                         c=ssp_colors[ssp],
                         s=25,
                         marker=ensemble_markers[ensemble],
@@ -757,9 +755,7 @@ def plot_boxplot_all(
             ylabels.append("")
             idx += 1
             # Plot
-            plot_boxplot(
-                data, plot_col, [idx], ssp_colors[ssp], ax, limits=limits
-            )
+            plot_boxplot(data, plot_col, [idx], ssp_colors[ssp], ax, limits=limits)
             idx += 1
             ylabels.append(f"{ensemble} ({len(data)})")
 
@@ -872,9 +868,7 @@ def plot_city(
             suffixes=("_hist", "_proj"),
         ).reset_index()
 
-        df_plot[plot_col] = (
-            df_plot[f"{plot_col}_proj"] - df_plot[f"{plot_col}_hist"]
-        )
+        df_plot[plot_col] = df_plot[f"{plot_col}_proj"] - df_plot[f"{plot_col}_hist"]
 
     plot_boxplot_all(
         df_plot,
@@ -920,6 +914,8 @@ def plot_boxplot_all_bayes(
         idx += idx_step
         # Plot
         gcms = data["gcm"].unique()
+        # Skip TaiESM1 (outputs recalled)
+        gcms = gcms[gcms != "TaiESM1"]
         if len(gcms) > 0:
             idxx_steps = np.linspace(-idx_step / 3, idx_step / 3, len(gcms))
             for idxx, gcm in enumerate(gcms):
@@ -941,9 +937,7 @@ def plot_boxplot_all_bayes(
             # Filter minimum members
             df_sel = df[(df["ensemble"] == ensemble) & (df["ssp"] == ssp)]
             min_filter = (
-                df_sel[df_sel["quantile"] == "mean"]
-                .groupby("gcm")[plot_col]
-                .count()
+                df_sel[df_sel["quantile"] == "main"].groupby("gcm")[plot_col].count()
                 >= min_members
             )
             if min_filter.sum() > 0:
@@ -957,9 +951,7 @@ def plot_boxplot_all_bayes(
                 for gcm in gcms:
                     data = df_sel[df_sel["gcm"] == gcm]
                     members = data["member"].unique()
-                    idxx_steps = np.linspace(
-                        -idx_step / 3, idx_step / 3, len(members)
-                    )
+                    idxx_steps = np.linspace(-idx_step / 3, idx_step / 3, len(members))
                     for idxx, member in enumerate(members):
                         plot_conf_intvs(
                             data[data["member"] == member],
@@ -972,9 +964,7 @@ def plot_boxplot_all_bayes(
                             limits=limits,
                         )
                     idx += idx_step
-                    ylabels.append(
-                        f"{ensemble} {gcm} ({len(data['member'].unique())})"
-                    )
+                    ylabels.append(f"{ensemble} {gcm} ({len(data['member'].unique())})")
 
     # Legend
     if legend:

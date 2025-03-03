@@ -18,14 +18,14 @@ ssps = ["ssp245", "ssp370", "ssp585"]
 ################
 # Paths
 ################
-roar_code_path = "/storage/home/dcl5300/work/current_projects/conus_comparison_lafferty-etal-2024"
-roar_data_path = "/storage/group/pches/default/users/dcl5300/conus_comparison_lafferty-etal-2024"
-hopper_code_path = (
-    "/home/fs01/dcl257/projects/conus_comparison_lafferty-etal-2024"
+roar_code_path = (
+    "/storage/home/dcl5300/work/current_projects/conus_comparison_lafferty-etal-2024"
 )
-hopper_data_path = (
-    "/home/fs01/dcl257/projects/data/conus_comparison_lafferty-etal-2024"
+roar_data_path = (
+    "/storage/group/pches/default/users/dcl5300/conus_comparison_lafferty-etal-2024"
 )
+hopper_code_path = "/home/fs01/dcl257/projects/conus_comparison_lafferty-etal-2024"
+hopper_data_path = "/home/fs01/dcl257/projects/data/conus_comparison_lafferty-etal-2024"
 
 ################
 # Cities
@@ -73,9 +73,7 @@ def get_unique_loca_metrics(metric_id, project_data_path=roar_data_path):
         df = pd.concat(
             [
                 df,
-                pd.DataFrame(
-                    {"gcm": gcm, "member": member, "ssp": ssp}, index=[0]
-                ),
+                pd.DataFrame({"gcm": gcm, "member": member, "ssp": ssp}, index=[0]),
             ]
         )
 

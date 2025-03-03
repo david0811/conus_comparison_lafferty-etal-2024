@@ -30,7 +30,9 @@ def get_city_timeseries(
     """
     # Read file
     if ensemble == "LOCA2":
-        files = glob(f"{project_data_path}/metrics/LOCA2/{metric_id}_{gcm}_{member}_{ssp}_*.nc")
+        files = glob(
+            f"{project_data_path}/metrics/LOCA2/{metric_id}_{gcm}_{member}_{ssp}_*.nc"
+        )
         ds = xr.concat([xr.open_dataset(file) for file in files], dim="time")
     else:
         ds = xr.open_dataset(
@@ -45,7 +47,9 @@ def get_city_timeseries(
     )
     # Fix LOCA CESM mapping
     if ensemble == "LOCA2" and gcm == "CESM2-LENS":
-        member_name = loca_gard_mapping[member] if member in loca_gard_mapping.keys() else member
+        member_name = (
+            loca_gard_mapping[member] if member in loca_gard_mapping.keys() else member
+        )
     else:
         member_name = member
 
@@ -189,141 +193,141 @@ def remap_latlon(ds):
     return ds
 
 
-def store_all_cities(
-    metric_id,
-    grid,
-    regrid_method,
-    proj_slice,
-    hist_slice,
-    stationary,
-    fit_method,
-    cols_to_keep,
-    col_identifier,
-    city_list,
-):
-    """
-    Store all cities GEV results as csv files for a given metric.
-    """
-    stat_str = "stat" if stationary else "nonstat"
-    grid_names = {
-        "LOCA2": "loca_grid",
-        "GARD-LENS": "gard_grid",
-        "original": "original_grid/freq",
-    }
-    # Check if done for all cities
-    if grid == "original":
-        regrid_str = ""
-    else:
-        regrid_str = f"_{regrid_method}"
+# def store_all_cities(
+#     metric_id,
+#     grid,
+#     regrid_method,
+#     proj_slice,
+#     hist_slice,
+#     stationary,
+#     fit_method,
+#     cols_to_keep,
+#     col_identifier,
+#     city_list,
+# ):
+#     """
+#     Store all cities GEV results as csv files for a given metric.
+#     """
+#     stat_str = "stat" if stationary else "nonstat"
+#     grid_names = {
+#         "LOCA2": "loca_grid",
+#         "GARD-LENS": "gard_grid",
+#         "original": "original_grid/freq",
+#     }
+#     # Check if done for all cities
+#     if grid == "original":
+#         regrid_str = ""
+#     else:
+#         regrid_str = f"_{regrid_method}"
 
-    file_names = [
-        f"{city}_{metric_id}_{proj_slice}_{hist_slice}_{col_identifier}_{fit_method}_{stat_str}{regrid_str}.csv"
-        for city in list(city_list.keys())
-    ]
+#     file_names = [
+#         f"{city}_{metric_id}_{proj_slice}_{hist_slice}_{col_identifier}_{fit_method}_{stat_str}{regrid_str}.csv"
+#         for city in list(city_list.keys())
+#     ]
 
-    if not np.all(
-        [
-            os.path.exists(
-                f"{project_data_path}/extreme_value/cities/{grid_names[grid]}/{file_name}"
-            )
-            for file_name in file_names
-        ]
-    ):
-        # Read all
-        if grid == "original":
-            ds_loca = sau.read_loca(
-                metric_id=metric_id,
-                grid="LOCA2",
-                regrid_method=None,
-                proj_slice=proj_slice,
-                hist_slice=hist_slice,
-                stationary=stationary,
-                fit_method=fit_method,
-                cols_to_keep=cols_to_keep,
-            )
-            ds_star = sau.read_star(
-                metric_id=metric_id,
-                grid="STAR-ESDM",
-                regrid_method=None,
-                proj_slice=proj_slice,
-                hist_slice=hist_slice,
-                stationary=stationary,
-                fit_method=fit_method,
-                cols_to_keep=cols_to_keep,
-            )
-            ds_gard = sau.read_gard(
-                metric_id=metric_id,
-                grid="GARD-LENS",
-                regrid_method=None,
-                proj_slice=proj_slice,
-                hist_slice=hist_slice,
-                stationary=stationary,
-                fit_method=fit_method,
-                cols_to_keep=cols_to_keep,
-            )
-        else:
-            ds_loca, ds_star, ds_gard = sau.read_all(
-                metric_id=metric_id,
-                grid=grid,
-                regrid_method=regrid_method,
-                proj_slice=proj_slice,
-                hist_slice=hist_slice,
-                stationary=stationary,
-                fit_method=fit_method,
-                cols_to_keep=cols_to_keep,
-            )
+#     if not np.all(
+#         [
+#             os.path.exists(
+#                 f"{project_data_path}/extreme_value/cities/{grid_names[grid]}/{file_name}"
+#             )
+#             for file_name in file_names
+#         ]
+#     ):
+#         # Read all
+#         if grid == "original":
+#             ds_loca = sau.read_loca(
+#                 metric_id=metric_id,
+#                 grid="LOCA2",
+#                 regrid_method=None,
+#                 proj_slice=proj_slice,
+#                 hist_slice=hist_slice,
+#                 stationary=stationary,
+#                 fit_method=fit_method,
+#                 cols_to_keep=cols_to_keep,
+#             )
+#             ds_star = sau.read_star(
+#                 metric_id=metric_id,
+#                 grid="STAR-ESDM",
+#                 regrid_method=None,
+#                 proj_slice=proj_slice,
+#                 hist_slice=hist_slice,
+#                 stationary=stationary,
+#                 fit_method=fit_method,
+#                 cols_to_keep=cols_to_keep,
+#             )
+#             ds_gard = sau.read_gard(
+#                 metric_id=metric_id,
+#                 grid="GARD-LENS",
+#                 regrid_method=None,
+#                 proj_slice=proj_slice,
+#                 hist_slice=hist_slice,
+#                 stationary=stationary,
+#                 fit_method=fit_method,
+#                 cols_to_keep=cols_to_keep,
+#             )
+#         else:
+#             ds_loca, ds_star, ds_gard = sau.read_all(
+#                 metric_id=metric_id,
+#                 grid=grid,
+#                 regrid_method=regrid_method,
+#                 proj_slice=proj_slice,
+#                 hist_slice=hist_slice,
+#                 stationary=stationary,
+#                 fit_method=fit_method,
+#                 cols_to_keep=cols_to_keep,
+#             )
 
-        # Remap lat/lons
-        ds_loca = remap_latlon(ds_loca)
-        ds_star = remap_latlon(ds_star)
-        ds_gard = remap_latlon(ds_gard)
+#         # Remap lat/lons
+#         ds_loca = remap_latlon(ds_loca)
+#         ds_star = remap_latlon(ds_star)
+#         ds_gard = remap_latlon(ds_gard)
 
-        # Loop through cities
-        for city in city_list:
-            # Read
-            lat, lon = city_list[city]
-            df_loca = (
-                ds_loca.sel(lat=lat, lon=lon, method="nearest")
-                .to_dataframe()
-                .dropna()
-                .drop(columns=["lat", "lon"])
-                .reset_index()
-            )
-            df_star = (
-                ds_star.sel(lat=lat, lon=lon, method="nearest")
-                .to_dataframe()
-                .dropna()
-                .drop(columns=["lat", "lon"])
-                .reset_index()
-            )
-            df_gard = (
-                ds_gard.sel(lat=lat, lon=lon, method="nearest")
-                .to_dataframe()
-                .dropna()
-                .drop(columns=["lat", "lon"])
-                .reset_index()
-            )
+#         # Loop through cities
+#         for city in city_list:
+#             # Read
+#             lat, lon = city_list[city]
+#             df_loca = (
+#                 ds_loca.sel(lat=lat, lon=lon, method="nearest")
+#                 .to_dataframe()
+#                 .dropna()
+#                 .drop(columns=["lat", "lon"])
+#                 .reset_index()
+#             )
+#             df_star = (
+#                 ds_star.sel(lat=lat, lon=lon, method="nearest")
+#                 .to_dataframe()
+#                 .dropna()
+#                 .drop(columns=["lat", "lon"])
+#                 .reset_index()
+#             )
+#             df_gard = (
+#                 ds_gard.sel(lat=lat, lon=lon, method="nearest")
+#                 .to_dataframe()
+#                 .dropna()
+#                 .drop(columns=["lat", "lon"])
+#                 .reset_index()
+#             )
 
-            # Concat
-            df_all = pd.concat([df_loca, df_star, df_gard])
+#             # Concat
+#             df_all = pd.concat([df_loca, df_star, df_gard])
 
-            # Store
-            if grid == "original":
-                regrid_str = ""
-            else:
-                regrid_str = f"_{regrid_method}"
+#             # Store
+#             if grid == "original":
+#                 regrid_str = ""
+#             else:
+#                 regrid_str = f"_{regrid_method}"
 
-            file_name = f"{city}_{metric_id}_{proj_slice}_{hist_slice}_{col_identifier}_{fit_method}_{stat_str}{regrid_str}.csv"
-            df_all.to_csv(
-                f"{project_data_path}/extreme_value/cities/{grid_names[grid]}/{file_name}",
-                index=False,
-            )
+#             file_name = f"{city}_{metric_id}_{proj_slice}_{hist_slice}_{col_identifier}_{fit_method}_{stat_str}{regrid_str}.csv"
+#             df_all.to_csv(
+#                 f"{project_data_path}/extreme_value/cities/{grid_names[grid]}/{file_name}",
+#                 index=False,
+#             )
 
 
 #######################
 # UC for city df
 #######################
-def calculate_df_uc(df, plot_col, bayesian, min_members=5):
+def calculate_df_uc(df, plot_col, calculate_gev_uc, min_members=5):
     """
     Calculate the uncertainty decomposition based on pd DataFrame.
     """
@@ -334,21 +338,29 @@ def calculate_df_uc(df, plot_col, bayesian, min_members=5):
 
     def get_quantile_range(df, groupby_cols, plot_col):
         df_tmp = pd.merge(
-            df[df["quantile"] == "0.957"].rename(columns={plot_col: f"{plot_col}_upper"}),
-            df[df["quantile"] == "0.025"].rename(columns={plot_col: f"{plot_col}_lower"}),
+            df[df["quantile"] == "p975"].rename(
+                columns={plot_col: f"{plot_col}_upper"}
+            ),
+            df[df["quantile"] == "p025"].rename(
+                columns={plot_col: f"{plot_col}_lower"}
+            ),
             on=groupby_cols,
         )
 
-        df_tmp[f"{plot_col}_diff"] = df_tmp[f"{plot_col}_upper"] - df_tmp[f"{plot_col}_lower"]
+        df_tmp[f"{plot_col}_diff"] = (
+            df_tmp[f"{plot_col}_upper"] - df_tmp[f"{plot_col}_lower"]
+        )
         return df_tmp
 
     # Get combos to include
-    if bayesian:
-        df_main = df[df["quantile"] == "0.5"]
+    if calculate_gev_uc:
+        df_main = df[df["quantile"] == "main"]
     else:
         df_main = df.copy()
 
-    combos_to_include = df.groupby(["ensemble", "gcm", "ssp"]).count()[plot_col] >= min_members
+    combos_to_include = (
+        df.groupby(["ensemble", "gcm", "ssp"]).count()[plot_col] >= min_members
+    )
 
     # Scenario uncertainty
     ssp_uc_by_gcm = (
@@ -362,7 +374,10 @@ def calculate_df_uc(df, plot_col, bayesian, min_members=5):
     ssp_uc_by_gcm_std = ssp_uc_by_gcm.replace(0.0, np.nan).std()
 
     ssp_uc = (
-        df_main.groupby(["ensemble", "ssp"])[plot_col].mean().groupby("ensemble").apply(get_range)
+        df_main.groupby(["ensemble", "ssp"])[plot_col]
+        .mean()
+        .groupby("ensemble")
+        .apply(get_range)
     )
     ssp_uc_mean = ssp_uc.replace(0.0, np.nan).mean()
     ssp_uc_std = ssp_uc.replace(0.0, np.nan).std()
@@ -392,8 +407,8 @@ def calculate_df_uc(df, plot_col, bayesian, min_members=5):
     ds_uc_mean = ds_uc.replace(0.0, np.nan).mean()
     ds_uc_std = ds_uc.replace(0.0, np.nan).std()
 
-    # GEV uncertainty if Bayesian
-    if bayesian:
+    # GEV uncertainty if included
+    if calculate_gev_uc:
         gev_uc = get_quantile_range(
             df=df,
             groupby_cols=["gcm", "ensemble", "member", "ssp"],
@@ -444,10 +459,10 @@ def calculate_df_uc(df, plot_col, bayesian, min_members=5):
 
 #     def calculate_quantile_range(df, groupby_cols, plot_col):
 #         df_tmp = pd.merge(
-#             df[df["quantile"] == "0.957"].rename(
+#             df[df["quantile"] == "p975"].rename(
 #                 columns={plot_col: f"{plot_col}_upper"}
 #             ),
-#             df[df["quantile"] == "0.025"].rename(
+#             df[df["quantile"] == "p025"].rename(
 #                 columns={plot_col: f"{plot_col}_lower"}
 #             ),
 #             on=groupby_cols,
@@ -463,7 +478,7 @@ def calculate_df_uc(df, plot_col, bayesian, min_members=5):
 #     )
 
 #     # Regular uncertainties with median
-#     df_median = df[df["quantile"] == "0.5"]
+#     df_median = df[df["quantile"] == "main"]
 
 #     # Scenario uncertainty
 #     ssp_uc_by_gcm = (

@@ -15,27 +15,35 @@ def read_loca(
     stationary,
     fit_method,
     cols_to_keep,
+    analysis_type,
 ):
     """
-    Reads the LOCA GEV data for a given metric.
+    Reads the LOCA GEV/trend data for a given metric.
     """
-    stat_name = "stat" if stationary else "nonstat"
-
+    # Get grid info
     if grid == "LOCA2":
-        loca_grid_str = "original_grid"
+        loca_grid_str = "original_grids"
         loca_regrid_str = ""
     elif grid == "GARD-LENS":
         loca_grid_str = "gard_grid"
         loca_regrid_str = f"_{regrid_method}"
 
+    # Get file info
+    stat_name = "stat" if stationary else "nonstat"
+    if analysis_type == "extreme_value":
+        file_info = f"{stat_name}_{fit_method}{loca_regrid_str}"
+    elif analysis_type == "trends":
+        file_info = loca_regrid_str
+
+    # Read all
     loca_ssp245_files = glob(
-        f"{project_data_path}/extreme_value/{loca_grid_str}/{metric_id}/LOCA2_*_ssp245_{proj_slice}_{stat_name}_{fit_method}{loca_regrid_str}.nc"
+        f"{project_data_path}/{analysis_type}/{loca_grid_str}/{metric_id}/LOCA2_*_ssp245_{proj_slice}{file_info}.nc"
     )
     loca_ssp370_files = glob(
-        f"{project_data_path}/extreme_value/{loca_grid_str}/{metric_id}/LOCA2_*_ssp370_{proj_slice}_{stat_name}_{fit_method}{loca_regrid_str}.nc"
+        f"{project_data_path}/{analysis_type}/{loca_grid_str}/{metric_id}/LOCA2_*_ssp370_{proj_slice}{file_info}.nc"
     )
     loca_ssp585_files = glob(
-        f"{project_data_path}/extreme_value/{loca_grid_str}/{metric_id}/LOCA2_*_ssp585_{proj_slice}_{stat_name}_{fit_method}{loca_regrid_str}.nc"
+        f"{project_data_path}/{analysis_type}/{loca_grid_str}/{metric_id}/LOCA2_*_ssp585_{proj_slice}{file_info}.nc"
     )
 
     ds_loca = xr.concat(
@@ -55,7 +63,7 @@ def read_loca(
 
     if hist_slice is not None:
         loca_hist_files = glob(
-            f"{project_data_path}/extreme_value/{loca_grid_str}/{metric_id}/LOCA2_*_{hist_slice}_{stat_name}_{fit_method}{loca_regrid_str}.nc"
+            f"{project_data_path}/{analysis_type}/{loca_grid_str}/{metric_id}/LOCA2_*_{hist_slice}{file_info}.nc"
         )
         ds_loca_hist = xr.combine_by_coords(
             [xr.open_dataset(file)[cols_to_keep] for file in loca_hist_files]
@@ -74,12 +82,12 @@ def read_star(
     stationary,
     fit_method,
     cols_to_keep,
+    analysis_type,
 ):
     """
-    Reads the STAR GEV data for a given metric.
+    Reads the STAR GEV/trend data for a given metric.
     """
-    stat_name = "stat" if stationary else "nonstat"
-
+    # Get grid info
     if grid == "LOCA2":
         star_grid_str = "loca_grid"
         star_regrid_str = f"_{regrid_method}"
@@ -87,11 +95,19 @@ def read_star(
         star_grid_str = "gard_grid"
         star_regrid_str = f"_{regrid_method}"
     elif grid == "STAR-ESDM":
-        star_grid_str = "original_grid"
+        star_grid_str = "original_grids"
         star_regrid_str = ""
 
+    # Get file info
+    stat_name = "stat" if stationary else "nonstat"
+    if analysis_type == "extreme_value":
+        file_info = f"{stat_name}_{fit_method}{star_regrid_str}"
+    elif analysis_type == "trends":
+        file_info = star_regrid_str
+
+    # Read all files
     star_proj_files = glob(
-        f"{project_data_path}/extreme_value/{star_grid_str}/{metric_id}/STAR-ESDM_*_{proj_slice}_{stat_name}_{fit_method}{star_regrid_str}.nc"
+        f"{project_data_path}/{analysis_type}/{star_grid_str}/{metric_id}/STAR-ESDM_*_{proj_slice}{file_info}.nc"
     )
     ds_star = xr.combine_by_coords(
         [xr.open_dataset(file)[cols_to_keep] for file in star_proj_files]
@@ -100,7 +116,7 @@ def read_star(
     # Read historical is desired
     if hist_slice is not None:
         star_hist_files = glob(
-            f"{project_data_path}/extreme_value/{star_grid_str}/{metric_id}/STAR-ESDM_*_{hist_slice}_{stat_name}_{fit_method}{star_regrid_str}.nc"
+            f"{project_data_path}/{analysis_type}/{star_grid_str}/{metric_id}/STAR-ESDM_*_{file_info}.nc"
         )
         ds_star_hist = xr.combine_by_coords(
             [xr.open_dataset(file)[cols_to_keep] for file in star_hist_files]
@@ -122,21 +138,29 @@ def read_gard(
     stationary,
     fit_method,
     cols_to_keep,
+    analysis_type,
 ):
     """
-    Reads the GARD GEV data for a given metric.
+    Reads the GARD GEV/trend data for a given metric.
     """
-    stat_name = "stat" if stationary else "nonstat"
-
+    # Get grid info
     if grid == "LOCA2":
         gard_grid_str = "loca_grid"
         gard_regrid_str = f"_{regrid_method}"
     elif grid == "GARD-LENS":
-        gard_grid_str = "original_grid"
+        gard_grid_str = "original_grids"
         gard_regrid_str = ""
 
+    # Get file info
+    stat_name = "stat" if stationary else "nonstat"
+    if analysis_type == "extreme_value":
+        file_info = f"{stat_name}_{fit_method}{gard_regrid_str}"
+    elif analysis_type == "trends":
+        file_info = gard_regrid_str
+
+    # Read all files
     gard_proj_files = glob(
-        f"{project_data_path}/extreme_value/{gard_grid_str}/{metric_id}/GARD-LENS_*_{proj_slice}_{stat_name}_{fit_method}{gard_regrid_str}.nc"
+        f"{project_data_path}/{analysis_type}/{gard_grid_str}/{metric_id}/GARD-LENS_*_{proj_slice}{file_info}.nc"
     )
     ds_gard = xr.combine_by_coords(
         [xr.open_dataset(file)[cols_to_keep] for file in gard_proj_files]
@@ -144,7 +168,7 @@ def read_gard(
 
     if hist_slice is not None:
         gard_hist_files = glob(
-            f"{project_data_path}/extreme_value/{gard_grid_str}/{metric_id}/GARD-LENS_*_{hist_slice}_{stat_name}_{fit_method}{gard_regrid_str}.nc"
+            f"{project_data_path}/{analysis_type}/{gard_grid_str}/{metric_id}/GARD-LENS_*_{hist_slice}{file_info}.nc"
         )
         ds_gard_hist = xr.combine_by_coords(
             [xr.open_dataset(file)[cols_to_keep] for file in gard_hist_files]
@@ -163,39 +187,43 @@ def read_all(
     stationary,
     fit_method,
     cols_to_keep,
+    analysis_type,
 ):
     """
     Reads all the GEV data for a given metric.
     """
     ds_loca = read_loca(
-        metric_id,
-        grid,
-        regrid_method,
-        proj_slice,
-        hist_slice,
-        stationary,
-        fit_method,
-        cols_to_keep,
+        metric_id=metric_id,
+        grid=grid,
+        regrid_method=regrid_method,
+        proj_slice=proj_slice,
+        hist_slice=hist_slice,
+        stationary=stationary,
+        fit_method=fit_method,
+        cols_to_keep=cols_to_keep,
+        analysis_type=analysis_type,
     )
     ds_star = read_star(
-        metric_id,
-        grid,
-        regrid_method,
-        proj_slice,
-        hist_slice,
-        stationary,
-        fit_method,
-        cols_to_keep,
+        metric_id=metric_id,
+        grid=grid,
+        regrid_method=regrid_method,
+        proj_slice=proj_slice,
+        hist_slice=hist_slice,
+        stationary=stationary,
+        fit_method=fit_method,
+        cols_to_keep=cols_to_keep,
+        analysis_type=analysis_type,
     )
     ds_gard = read_gard(
-        metric_id,
-        grid,
-        regrid_method,
-        proj_slice,
-        hist_slice,
-        stationary,
-        fit_method,
-        cols_to_keep,
+        metric_id=metric_id,
+        grid=grid,
+        regrid_method=regrid_method,
+        proj_slice=proj_slice,
+        hist_slice=hist_slice,
+        stationary=stationary,
+        fit_method=fit_method,
+        cols_to_keep=cols_to_keep,
+        analysis_type=analysis_type,
     )
 
     return ds_loca, ds_star, ds_gard
@@ -225,7 +253,10 @@ def compute_gcm_uc(ds_loca, ds_gard, ds_star, var_name, min_members=5):
     # range is computed across only 1 ensemble, so we filter any below
     # the maximum count
     gcm_uc = xr.concat([gard_gcm_range, star_gcm_range, loca_gcm_range], dim="ensemble")
-    uq_maxs = gcm_uc.count(dim=["ensemble", "ssp"]) == gcm_uc.count(dim=["ensemble", "ssp"]).max()
+    uq_maxs = (
+        gcm_uc.count(dim=["ensemble", "ssp"])
+        == gcm_uc.count(dim=["ensemble", "ssp"]).max()
+    )
     gcm_uc = gcm_uc.where(uq_maxs).mean(dim=["ensemble", "ssp"])
 
     return gcm_uc
@@ -312,7 +343,10 @@ def compute_iv_uc(ds_loca, ds_gard, ds_star, var_name, min_members=5):
 
 def compute_dsc_uc(ds_loca, ds_gard, ds_star, var_name):
     # Get GCM/SSP/member combinations for which we can compute downscaling uncertainty
-    ilat, ilon = 200, 400  # test point for non-null values
+    ilat, ilon = (
+        int(len(ds_loca["lat"]) / 2),
+        int(len(ds_loca["lon"]) / 2),
+    )  # test point for non-null values
     combos_to_include = (
         xr.concat(
             [
@@ -349,9 +383,15 @@ def compute_dsc_uc(ds_loca, ds_gard, ds_star, var_name):
     # Combine all
     ds_combined = xr.merge(
         [
-            xr.combine_by_coords([ds, ds_star], join="left", combine_attrs="drop_conflicts"),
-            xr.combine_by_coords([ds, ds_gard], join="left", combine_attrs="drop_conflicts"),
-            xr.combine_by_coords([ds, ds_loca], join="left", combine_attrs="drop_conflicts"),
+            xr.combine_by_coords(
+                [ds, ds_star], join="left", combine_attrs="drop_conflicts"
+            ),
+            xr.combine_by_coords(
+                [ds, ds_gard], join="left", combine_attrs="drop_conflicts"
+            ),
+            xr.combine_by_coords(
+                [ds, ds_loca], join="left", combine_attrs="drop_conflicts"
+            ),
         ],
         combine_attrs="drop_conflicts",
     )
@@ -403,8 +443,8 @@ def uc_all(
     col_name,
     proj_slice,
     hist_slice,
-    return_level=None,
     return_metric=False,
+    analysis_type="extreme_value",
 ):
     """
     Perform the UC for all.
@@ -419,30 +459,8 @@ def uc_all(
         stationary=stationary,
         fit_method=fit_method,
         cols_to_keep=[col_name],
+        analysis_type=analysis_type,
     )
-    # # Invert if minima
-    # if metric_id == "min_tasmin":
-    #     scalar = -1.0
-    # else:
-    #     scalar = 1.0
-
-    # # Compute return level/period
-    # if return_period is not None:
-    #     ds_loca = scalar * gevu.xr_estimate_return_level(
-    #         return_period, ds_loca
-    #     )
-    #     ds_gard = scalar * gevu.xr_estimate_return_level(
-    #         return_period, ds_gard
-    #     )
-    #     ds_star = scalar * gevu.xr_estimate_return_level(
-    #         return_period, ds_star
-    #     )
-    #     var_name = f"{return_period}yr_return_level"
-    # elif return_level is not None:
-    #     ds_loca = gevu.xr_estimate_return_period(return_level, ds_loca)
-    #     ds_gard = gevu.xr_estimate_return_period(return_level, ds_gard)
-    #     ds_star = gevu.xr_estimate_return_period(return_level, ds_star)
-    #     var_name = f"{return_level}_return_period"
 
     # Compute change if desired
     if hist_slice is not None:
