@@ -86,19 +86,21 @@ def fit_gev_city(
 
     # Check length is as expected
     if stationary:
-        check_data_length(hist_data, ensemble, gcm, "historical", hist_slice)
-        check_data_length(proj_data, ensemble, gcm, ssp, proj_slice)
+        expected_length_hist = check_data_length(hist_data, ensemble, gcm, "historical", hist_slice)
+        expected_length_proj = check_data_length(proj_data, ensemble, gcm, ssp, proj_slice)
     else:
-        check_data_length(data, ensemble, gcm, ssp, years)
+        _ = check_data_length(data, ensemble, gcm, ssp, years)
 
     # Do the fit
     if stationary:
         hist_params = gevu._fit_gev_1d_stationary(
             data=scalar * hist_data,
+            expected_length=expected_length_hist,
             fit_method=fit_method,
         )
         proj_params = gevu._fit_gev_1d_stationary(
             data=scalar * proj_data,
+            expected_length=expected_length_proj,
             fit_method=fit_method,
         )
     else:
@@ -136,7 +138,7 @@ def fit_gev_city(
                 )
             )
         else:
-            bootstrap_params, bootstrap_rls, bootsrap_rl_diffs = (
+            bootstrap_params, bootstrap_rls, bootstrap_rl_diffs = (
                 gevu._gev_parametric_bootstrap_1d_nonstationary(
                     params=params,
                     years=years,
@@ -152,61 +154,62 @@ def fit_gev_city(
     ## Parameter results
     if stationary:
         # Historical
-        hist_params_p025 = np.percentile(bootstrap_params_hist, 2.5, axis=0)
-        hist_params_p975 = np.percentile(bootstrap_params_hist, 97.5, axis=0)
+        hist_params_q025 = np.percentile(bootstrap_params_hist, 2.5, axis=0)
+        hist_params_q975 = np.percentile(bootstrap_params_hist, 97.5, axis=0)
 
         # Projection
-        proj_params_p025 = np.percentile(bootstrap_params_proj, 2.5, axis=0)
-        proj_params_p975 = np.percentile(bootstrap_params_proj, 97.5, axis=0)
+        proj_params_q025 = np.percentile(bootstrap_params_proj, 2.5, axis=0)
+        proj_params_q975 = np.percentile(bootstrap_params_proj, 97.5, axis=0)
     else:
-        params_p025 = np.percentile(bootstrap_params, 2.5, axis=0)
-        params_p975 = np.percentile(bootstrap_params, 97.5, axis=0)
+        # Parameters
+        params_q025 = np.percentile(bootstrap_params, 2.5, axis=0)
+        params_q975 = np.percentile(bootstrap_params, 97.5, axis=0)
 
     # Combine
     if stationary:
         df_res = pd.DataFrame(
             {
-                "quantile": ["main", "p025", "p975"],
+                "quantile": ["main", "q025", "q975"],
                 "ensemble": [ensemble, ensemble, ensemble],
                 "gcm": [gcm, gcm, gcm],
                 "member": [member, member, member],
                 "ssp": [ssp, ssp, ssp],
-                "loc_hist": [hist_params[0], hist_params_p025[0], hist_params_p975[0]],
+                "loc_hist": [hist_params[0], hist_params_q025[0], hist_params_q975[0]],
                 "scale_hist": [
                     hist_params[1],
-                    hist_params_p025[1],
-                    hist_params_p975[1],
+                    hist_params_q025[1],
+                    hist_params_q975[1],
                 ],
                 "shape_hist": [
                     hist_params[2],
-                    hist_params_p025[2],
-                    hist_params_p975[2],
+                    hist_params_q025[2],
+                    hist_params_q975[2],
                 ],
-                "loc_proj": [proj_params[0], proj_params_p025[0], proj_params_p975[0]],
+                "loc_proj": [proj_params[0], proj_params_q025[0], proj_params_q975[0]],
                 "scale_proj": [
                     proj_params[1],
-                    proj_params_p025[1],
-                    proj_params_p975[1],
+                    proj_params_q025[1],
+                    proj_params_q975[1],
                 ],
                 "shape_proj": [
                     proj_params[2],
-                    proj_params_p025[2],
-                    proj_params_p975[2],
+                    proj_params_q025[2],
+                    proj_params_q975[2],
                 ],
             }
         )
     else:
         df_res = pd.DataFrame(
             {
-                "quantile": ["main", "p025", "p975"],
+                "quantile": ["main", "q025", "q975"],
                 "ensemble": [ensemble, ensemble, ensemble],
                 "gcm": [gcm, gcm, gcm],
                 "member": [member, member, member],
                 "ssp": [ssp, ssp, ssp],
-                "loc_intcp": [params[0], params_p025[0], params_p975[0]],
-                "loc_trend": [params[1], params_p025[1], params_p975[1]],
-                "scale": [params[2], params_p025[2], params_p975[2]],
-                "shape": [params[3], params_p025[3], params_p975[3]],
+                "loc_intcp": [params[0], params_q025[0], params_q975[0]],
+                "loc_trend": [params[1], params_q025[1], params_q975[1]],
+                "scale": [params[2], params_q025[2], params_q975[2]],
+                "shape": [params[3], params_q025[3], params_q975[3]],
             }
         )
 
@@ -216,35 +219,35 @@ def fit_gev_city(
         return_levels_hist_main = scalar * gevu.estimate_return_level(
             np.array(periods_for_level), *hist_params
         )
-        return_levels_hist_p025 = np.percentile(
+        return_levels_hist_q025 = np.percentile(
             scalar * bootstrap_rls_hist, 2.5, axis=0
         )
-        return_levels_hist_p975 = np.percentile(
+        return_levels_hist_q975 = np.percentile(
             scalar * bootstrap_rls_hist, 97.5, axis=0
         )
 
         return_levels_proj_main = scalar * gevu.estimate_return_level(
             np.array(periods_for_level), *proj_params
         )
-        return_levels_proj_p025 = np.percentile(
+        return_levels_proj_q025 = np.percentile(
             scalar * bootstrap_rls_proj, 2.5, axis=0
         )
-        return_levels_proj_p975 = np.percentile(
+        return_levels_proj_q975 = np.percentile(
             scalar * bootstrap_rls_proj, 97.5, axis=0
         )
 
-        # Change
-        return_levels_change_main = return_levels_proj_main - return_levels_hist_main
-        return_levels_change_p025 = np.percentile(
+        # Diffs
+        return_levels_diff_main = return_levels_proj_main - return_levels_hist_main
+        return_levels_diff_q025 = np.percentile(
             scalar * (bootstrap_rls_proj - bootstrap_rls_hist), 2.5, axis=0
         )
-        return_levels_change_p975 = np.percentile(
+        return_levels_diff_q975 = np.percentile(
             scalar * (bootstrap_rls_proj - bootstrap_rls_hist), 97.5, axis=0
         )
         # Store in dataframe
         df_return_levels = pd.DataFrame(
             {
-                "quantile": ["main", "p025", "p975"],
+                "quantile": ["main", "q025", "q975"],
                 "ensemble": [ensemble, ensemble, ensemble],
                 "gcm": [gcm, gcm, gcm],
                 "member": [member, member, member],
@@ -252,24 +255,24 @@ def fit_gev_city(
                 **{
                     f"{period}yr_return_level_hist": [
                         return_levels_hist_main[i],
-                        return_levels_hist_p025[i],
-                        return_levels_hist_p975[i],
+                        return_levels_hist_q025[i],
+                        return_levels_hist_q975[i],
                     ]
                     for i, period in enumerate(periods_for_level)
                 },
                 **{
                     f"{period}yr_return_level_proj": [
                         return_levels_proj_main[i],
-                        return_levels_proj_p025[i],
-                        return_levels_proj_p975[i],
+                        return_levels_proj_q025[i],
+                        return_levels_proj_q975[i],
                     ]
                     for i, period in enumerate(periods_for_level)
                 },
                 **{
-                    f"{period}yr_return_level_change": [
-                        return_levels_change_main[i],
-                        return_levels_change_p025[i],
-                        return_levels_change_p975[i],
+                    f"{period}yr_return_level_diff": [
+                        return_levels_diff_main[i],
+                        return_levels_diff_q025[i],
+                        return_levels_diff_q975[i],
                     ]
                     for i, period in enumerate(periods_for_level)
                 },
@@ -278,7 +281,7 @@ def fit_gev_city(
     else:
         # Get return levels
         return_levels_main = [
-            gevu.estimate_return_level(
+            scalar * gevu.estimate_return_level(
                 period,
                 params[0] + params[1] * (return_period_year - years[0]),
                 params[2],
@@ -287,59 +290,67 @@ def fit_gev_city(
             for period in periods_for_level
             for return_period_year in return_period_years
         ]
-        return_levels_p025 = np.percentile(scalar * bootstrap_rls, 2.5, axis=0)
-        return_levels_p975 = np.percentile(scalar * bootstrap_rls, 97.5, axis=0)
+        return_levels_q025 = np.percentile(scalar * bootstrap_rls, 2.5, axis=0)
+        return_levels_q975 = np.percentile(scalar * bootstrap_rls, 97.5, axis=0)
 
         # Store in dataframe
         df_return_levels = pd.DataFrame(
             {
-                "quantile": ["main", "p025", "p975"],
+                "quantile": ["main", "q025", "q975"],
                 "ensemble": [ensemble, ensemble, ensemble],
                 "gcm": [gcm, gcm, gcm],
                 "member": [member, member, member],
                 "ssp": [ssp, ssp, ssp],
                 **{
                     f"{period}yr_return_level_{return_period_year}": [
-                        return_levels_main[i],
-                        return_levels_p025[i],
-                        return_levels_p975[i],
+                        return_levels_main[i_period * len(return_period_years) + i_year],
+                        return_levels_q025[i_period * len(return_period_years) + i_year],
+                        return_levels_q975[i_period * len(return_period_years) + i_year],
                     ]
-                    for i, period in enumerate(periods_for_level)
-                    for return_period_year in return_period_years
+                    for i_period, period in enumerate(periods_for_level)
+                    for i_year, return_period_year in enumerate(return_period_years)
                 },
             }
         )
         # Get return level differences
-        return_level_diffs = [
+        return_level_diffs_main = [
+            scalar * (
             gevu.estimate_return_level(
                 period,
-                params[0] + params[1] * (return_period_diff[1] - return_period_diff[0]),
+                params[0] + params[1] * (return_period_diff[1] - years[0]),
                 params[2],
                 params[3],
+            )) -
+            scalar * (
+            gevu.estimate_return_level(
+                period,
+                params[0] + params[1] * (return_period_diff[0] - years[0]),
+                params[2],
+                params[3],
+            )
             )
             for period in periods_for_level
             for return_period_diff in return_period_diffs
         ]
-        return_level_diffs_p025 = np.percentile(bootsrap_rl_diffs, 2.5, axis=0)
-        return_level_diffs_p975 = np.percentile(bootsrap_rl_diffs, 97.5, axis=0)
+        return_level_diffs_q025 = np.percentile(scalar * bootstrap_rl_diffs, 2.5, axis=0)
+        return_level_diffs_q975 = np.percentile(scalar * bootstrap_rl_diffs, 97.5, axis=0)
 
-        # Store in dataframe
         df_return_level_diffs = pd.DataFrame(
             {
-                "quantile": ["main", "p025", "p975"],
-                "ensemble": [ensemble, ensemble, ensemble],
-                "gcm": [gcm, gcm, gcm],
-                "member": [member, member, member],
-                "ssp": [ssp, ssp, ssp],
-                **{
-                    f"{period}yr_return_level_{return_period_diff[1]}-{return_period_diff[0]}": [
-                        return_level_diffs[i],
-                        return_level_diffs_p025[i],
-                        return_level_diffs_p975[i],
-                    ]
-                    for i, period in enumerate(periods_for_level)
-                    for return_period_diff in return_period_diffs
-                },
+            "quantile": ["main", "q025", "q975"],
+            "ensemble": [ensemble, ensemble, ensemble],
+            "gcm": [gcm, gcm, gcm],
+            "member": [member, member, member],
+            "ssp": [ssp, ssp, ssp],
+            **{
+                f"{period}yr_return_level_diff_{return_period_diff[1]}-{return_period_diff[0]}": [
+                return_level_diffs_main[i_period * len(return_period_diffs) + i_diff],
+                return_level_diffs_q025[i_period * len(return_period_diffs) + i_diff],
+                return_level_diffs_q975[i_period * len(return_period_diffs) + i_diff],
+                ]
+                for i_period, period in enumerate(periods_for_level)
+                for i_diff, return_period_diff in enumerate(return_period_diffs)
+            },
             }
         )
 
@@ -368,6 +379,7 @@ def fit_ensemble_gev_city(
     fit_method,
     periods_for_level,
     bootstrap="parametric",
+    n_boot=1000,
     hist_slice=[1950, 2014],
     proj_slice=[2050, 2100],
     years=None,
@@ -377,8 +389,57 @@ def fit_ensemble_gev_city(
     project_data_path=project_data_path,
 ):
     """
-    Fit city GEV across the entire ensemble.
+    Fits GEV (Generalized Extreme Value) distributions across an entire climate model ensemble for a specific city.
+    
+    This function processes all available ensemble members, GCMs, and scenarios for a given city and metric,
+    fitting either stationary or non-stationary GEV distributions with optional bootstrapping for uncertainty estimation.
+    
+    Parameters
+    ----------
+    city : str
+        Name of the city to analyze
+    metric_id : str
+        Identifier for the climate metric to analyze (e.g., 'max_tasmax' for maximum temperature)
+    stationary : bool
+        If True, fits a stationary GEV. If False, fits a non-stationary GEV with temporal trend
+    fit_method : str
+        Method used for fitting the GEV distribution
+    periods_for_level : list
+        Return periods (in years) for which to calculate return levels
+    bootstrap : str, optional
+        Type of bootstrap method, defaults to "parametric"
+    n_boot : int, optional
+        Number of bootstrap samples, defaults to 1000
+    hist_slice : list, optional
+        [start_year, end_year] for historical period, defaults to [1950, 2014]
+    proj_slice : list, optional
+        [start_year, end_year] for projection period, defaults to [2050, 2100]
+    years : list, optional
+        Years to use for non-stationary fit
+    return_period_years : list, optional
+        Years at which to calculate return levels for non-stationary fits
+    return_period_diffs : list, optional
+        Year pairs for calculating return level differences in non-stationary fits
+    store : bool, optional
+        If True, saves results to file; if False, returns results DataFrame, defaults to True
+    project_data_path : str, optional
+        Base path for project data files
+        
+    Returns
+    -------
+    pandas.DataFrame or None
+        If store=False, returns DataFrame with GEV fit results for all ensemble members.
+        If store=True, saves results to CSV and returns None.
+        Returns None if results file already exists.
+        
+    Notes
+    -----
+    Results are stored in CSV format with filename pattern:
+    {city}_{metric_id}_{hist_start}-{hist_end}_{proj_start}-{proj_end}_{fit_method}_{stat/nonstat}_nboot{n_boot}.csv
+    
+    Failed fits are logged to individual text files in the project's log directory.
     """
+    
     # Get unique combos
     df = pd.read_csv(f"{project_data_path}/metrics/cities/{city}_{metric_id}.csv")
     df = df.set_index(["ensemble", "gcm", "member", "ssp"]).sort_index()
@@ -386,7 +447,7 @@ def fit_ensemble_gev_city(
 
     # Check if done
     stat_str = "stat" if stationary else "nonstat"
-    file_name = f"{city}_{metric_id}_{hist_slice[0]}-{hist_slice[1]}_{proj_slice[0]}-{proj_slice[1]}_{fit_method}_{stat_str}.csv"
+    file_name = f"{city}_{metric_id}_{hist_slice[0]}-{hist_slice[1]}_{proj_slice[0]}-{proj_slice[1]}_{fit_method}_{stat_str}_nboot{n_boot}.csv"
     if os.path.exists(
         f"{project_data_path}/extreme_value/cities/original_grid/freq/{file_name}"
     ):
@@ -400,6 +461,8 @@ def fit_ensemble_gev_city(
         ensemble, gcm, member, ssp = combo
         if ssp == "historical":
             continue
+        if ensemble == "STAR-ESDM" and gcm == "TaiESM1":
+            continue # Skip recalled outputs
         try:
             df_tmp = fit_gev_city(
                 city=city,
@@ -415,6 +478,7 @@ def fit_ensemble_gev_city(
                 stationary=stationary,
                 years=years,
                 bootstrap=bootstrap,
+                n_boot=n_boot,
                 return_period_years=return_period_years,
                 return_period_diffs=return_period_diffs,
             )

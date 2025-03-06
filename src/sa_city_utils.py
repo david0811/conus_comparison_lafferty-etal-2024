@@ -1,19 +1,17 @@
 import os
 from glob import glob
 
-import dask
 import numpy as np
+import dask
 import pandas as pd
 import xarray as xr
 
-import sa_utils as sau
 from utils import city_list, get_unique_loca_metrics, loca_gard_mapping
 from utils import roar_data_path as project_data_path
 
 #####################################
 # Calculating city timeseries metrics
 #####################################
-
 
 def get_city_timeseries(
     city,
@@ -176,21 +174,145 @@ def get_city_timeseries_all(
         index=False,
     )
 
+#######################
+# UC for city df
+#######################
+def calculate_df_uc(df, plot_col, calculate_gev_uc=True, n_min_members=5):
+    """
+    Calculate the uncertainty decomposition based on pd DataFrame.
+    """
 
-#################################
-# Store all city GEV results
-#################################
+    # Range functions
+    def get_range(x):
+        return x.max() - x.min()
+
+    def get_quantile_range(df, groupby_cols, plot_col):
+        df_tmp = pd.merge(
+            df[df["quantile"] == "p975"].rename(
+                columns={plot_col: f"{plot_col}_upper"}
+            ),
+            df[df["quantile"] == "q025"].rename(
+                columns={plot_col: f"{plot_col}_lower"}
+            ),
+            on=groupby_cols,
+        )
+
+        df_tmp[f"{plot_col}_diff"] = (
+            df_tmp[f"{plot_col}_upper"] - df_tmp[f"{plot_col}_lower"]
+        )
+        return df_tmp
+
+    # Get combos to include
+    if calculate_gev_uc:
+        df_main = df[df["quantile"] == "main"]
+    else:
+        df_main = df.copy()
+
+    combos_to_include = (
+        df.groupby(["ensemble", "gcm", "ssp"]).count()[plot_col] >= n_min_members
+    )
+
+    # Scenario uncertainty
+    ssp_uc_by_gcm = (
+        df_main.groupby(["ensemble", "gcm", "ssp"])[plot_col]
+        .mean()
+        .loc[combos_to_include]
+        .groupby(["gcm", "ensemble"])
+        .apply(get_range)
+    )
+    ssp_uc_by_gcm_mean = ssp_uc_by_gcm.replace(0.0, np.nan).mean()
+    ssp_uc_by_gcm_std = ssp_uc_by_gcm.replace(0.0, np.nan).std()
+
+    ssp_uc = (
+        df_main.groupby(["ensemble", "ssp"])[plot_col]
+        .mean()
+        .groupby("ensemble")
+        .apply(get_range)
+    )
+    ssp_uc_mean = ssp_uc.replace(0.0, np.nan).mean()
+    ssp_uc_std = ssp_uc.replace(0.0, np.nan).std()
+
+    # Response uncertainty
+    gcm_uc = (
+        df_main.groupby(["ensemble", "gcm", "ssp"])[plot_col]
+        .mean()
+        .loc[combos_to_include]
+        .groupby(["ssp", "ensemble"])
+        .apply(get_range)
+    )
+    gcm_uc_mean = gcm_uc.replace(0.0, np.nan).mean()
+    gcm_uc_std = gcm_uc.replace(0.0, np.nan).std()
+
+    # Internal variability
+    iv_uc = (
+        df_main.groupby(["ensemble", "gcm", "ssp"])[plot_col]
+        .apply(get_range)
+        .loc[combos_to_include]
+    )
+    iv_uc_mean = iv_uc.replace(0.0, np.nan).mean()
+    iv_uc_std = iv_uc.replace(0.0, np.nan).std()
+
+    # Downscaling uncertainty
+    ds_uc = df_main.groupby(["gcm", "ssp", "member"])[plot_col].apply(get_range)
+    ds_uc_mean = ds_uc.replace(0.0, np.nan).mean()
+    ds_uc_std = ds_uc.replace(0.0, np.nan).std()
+
+    # GEV uncertainty if included
+    if calculate_gev_uc:
+        gev_uc = get_quantile_range(
+            df=df,
+            groupby_cols=["gcm", "ensemble", "member", "ssp"],
+            plot_col=plot_col,
+        )
+        gev_uc_mean = gev_uc[f"{plot_col}_diff"].mean()
+        gev_uc_std = gev_uc[f"{plot_col}_diff"].std()
+    else:
+        gev_uc_mean = np.nan
+        gev_uc_std = np.nan
+
+    # Return all
+    return pd.DataFrame(
+        {
+            "uncertainty_type": [
+                "ssp_uc",
+                "ssp_uc_by_gcm",
+                "gcm_uc",
+                "iv_uc",
+                "ds_uc",
+                "gev_uc",
+            ],
+            "mean": [
+                ssp_uc_mean,
+                ssp_uc_by_gcm_mean,
+                gcm_uc_mean,
+                iv_uc_mean,
+                ds_uc_mean,
+                gev_uc_mean,
+            ],
+            "std": [
+                ssp_uc_std,
+                ssp_uc_by_gcm_std,
+                gcm_uc_std,
+                iv_uc_std,
+                ds_uc_std,
+                gev_uc_std,
+            ],
+        }
+    )
 
 
-def remap_latlon(ds):
-    # Make sure lat/lon is named correctly
-    if "latitude" in ds.dims and "longitude" in ds.dims:
-        ds = ds.rename({"latitude": "lat", "longitude": "lon"})
-    # Set lon to [-180,180] if it is not already in that range
-    if ds["lon"].max() > 180:
-        ds["lon"] = ((ds["lon"] + 180) % 360) - 180
+# #################################
+# # Store all city GEV results
+# #################################
+# def remap_latlon(ds):
+#     # Make sure lat/lon is named correctly
+#     if "latitude" in ds.dims and "longitude" in ds.dims:
+#         ds = ds.rename({"latitude": "lat", "longitude": "lon"})
+#     # Set lon to [-180,180] if it is not already in that range
+#     if ds["lon"].max() > 180:
+#         ds["lon"] = ((ds["lon"] + 180) % 360) - 180
 
-    return ds
+#     return ds
 
 
 # def store_all_cities(
@@ -323,135 +445,7 @@ def remap_latlon(ds):
 #                 index=False,
 #             )
 
-
-#######################
-# UC for city df
-#######################
-def calculate_df_uc(df, plot_col, calculate_gev_uc, min_members=5):
-    """
-    Calculate the uncertainty decomposition based on pd DataFrame.
-    """
-
-    # Range functions
-    def get_range(x):
-        return x.max() - x.min()
-
-    def get_quantile_range(df, groupby_cols, plot_col):
-        df_tmp = pd.merge(
-            df[df["quantile"] == "p975"].rename(
-                columns={plot_col: f"{plot_col}_upper"}
-            ),
-            df[df["quantile"] == "p025"].rename(
-                columns={plot_col: f"{plot_col}_lower"}
-            ),
-            on=groupby_cols,
-        )
-
-        df_tmp[f"{plot_col}_diff"] = (
-            df_tmp[f"{plot_col}_upper"] - df_tmp[f"{plot_col}_lower"]
-        )
-        return df_tmp
-
-    # Get combos to include
-    if calculate_gev_uc:
-        df_main = df[df["quantile"] == "main"]
-    else:
-        df_main = df.copy()
-
-    combos_to_include = (
-        df.groupby(["ensemble", "gcm", "ssp"]).count()[plot_col] >= min_members
-    )
-
-    # Scenario uncertainty
-    ssp_uc_by_gcm = (
-        df_main.groupby(["ensemble", "gcm", "ssp"])[plot_col]
-        .mean()
-        .loc[combos_to_include]
-        .groupby(["gcm", "ensemble"])
-        .apply(get_range)
-    )
-    ssp_uc_by_gcm_mean = ssp_uc_by_gcm.replace(0.0, np.nan).mean()
-    ssp_uc_by_gcm_std = ssp_uc_by_gcm.replace(0.0, np.nan).std()
-
-    ssp_uc = (
-        df_main.groupby(["ensemble", "ssp"])[plot_col]
-        .mean()
-        .groupby("ensemble")
-        .apply(get_range)
-    )
-    ssp_uc_mean = ssp_uc.replace(0.0, np.nan).mean()
-    ssp_uc_std = ssp_uc.replace(0.0, np.nan).std()
-
-    # Response uncertainty
-    gcm_uc = (
-        df_main.groupby(["ensemble", "gcm", "ssp"])[plot_col]
-        .mean()
-        .loc[combos_to_include]
-        .groupby(["ssp", "ensemble"])
-        .apply(get_range)
-    )
-    gcm_uc_mean = gcm_uc.replace(0.0, np.nan).mean()
-    gcm_uc_std = gcm_uc.replace(0.0, np.nan).std()
-
-    # Internal variability
-    iv_uc = (
-        df_main.groupby(["ensemble", "gcm", "ssp"])[plot_col]
-        .apply(get_range)
-        .loc[combos_to_include]
-    )
-    iv_uc_mean = iv_uc.replace(0.0, np.nan).mean()
-    iv_uc_std = iv_uc.replace(0.0, np.nan).std()
-
-    # Downscaling uncertainty
-    ds_uc = df_main.groupby(["gcm", "ssp", "member"])[plot_col].apply(get_range)
-    ds_uc_mean = ds_uc.replace(0.0, np.nan).mean()
-    ds_uc_std = ds_uc.replace(0.0, np.nan).std()
-
-    # GEV uncertainty if included
-    if calculate_gev_uc:
-        gev_uc = get_quantile_range(
-            df=df,
-            groupby_cols=["gcm", "ensemble", "member", "ssp"],
-            plot_col=plot_col,
-        )
-        gev_uc_mean = gev_uc[f"{plot_col}_diff"].mean()
-        gev_uc_std = gev_uc[f"{plot_col}_diff"].std()
-    else:
-        gev_uc_mean = np.nan
-        gev_uc_std = np.nan
-
-    # Return all
-    return pd.DataFrame(
-        {
-            "uncertainty_type": [
-                "ssp_uc",
-                "ssp_uc_by_gcm",
-                "gcm_uc",
-                "iv_uc",
-                "ds_uc",
-                "gev_uc",
-            ],
-            "mean": [
-                ssp_uc_mean,
-                ssp_uc_by_gcm_mean,
-                gcm_uc_mean,
-                iv_uc_mean,
-                ds_uc_mean,
-                gev_uc_mean,
-            ],
-            "std": [
-                ssp_uc_std,
-                ssp_uc_by_gcm_std,
-                gcm_uc_std,
-                iv_uc_std,
-                ds_uc_std,
-                gev_uc_std,
-            ],
-        }
-    )
-
-
-# def calculate_df_uc_bayesian(df, plot_col, min_members=5):
+# def calculate_df_uc_bayesian(df, plot_col, n_min_members=5):
 #     """
 #     Calculate the uncertainty decomposition based on pd DataFrame.
 #     """
@@ -459,7 +453,7 @@ def calculate_df_uc(df, plot_col, calculate_gev_uc, min_members=5):
 
 #     def calculate_quantile_range(df, groupby_cols, plot_col):
 #         df_tmp = pd.merge(
-#             df[df["quantile"] == "p975"].rename(
+#             df[df["quantile"] == "q975"].rename(
 #                 columns={plot_col: f"{plot_col}_upper"}
 #             ),
 #             df[df["quantile"] == "p025"].rename(
@@ -474,7 +468,7 @@ def calculate_df_uc(df, plot_col, calculate_gev_uc, min_members=5):
 #         return df_tmp
 
 #     combos_to_include = (
-#         df.groupby(["ensemble", "gcm", "ssp"]).count()[plot_col] >= min_members
+#         df.groupby(["ensemble", "gcm", "ssp"]).count()[plot_col] >= n_min_members
 #     )
 
 #     # Regular uncertainties with median

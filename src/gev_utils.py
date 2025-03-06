@@ -285,7 +285,13 @@ def _gev_parametric_bootstrap_1d_nonstationary(
         return_level_diffs_out[i, :] = [
             estimate_return_level(
                 period,
-                loc_intcp_tmp + loc_trend_tmp * (return_period_diff[1] - return_period_diff[0]),
+                loc_intcp_tmp + loc_trend_tmp * (return_period_diff[1] - years[0]),
+                scale_tmp,
+                shape_tmp,
+            ) - 
+            estimate_return_level(
+                period,
+                loc_intcp_tmp + loc_trend_tmp * (return_period_diff[0] - years[0]),
                 scale_tmp,
                 shape_tmp,
             )

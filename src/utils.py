@@ -76,7 +76,7 @@ def check_data_length(data, ensemble, gcm, ssp, years):
     Check length function
     """
     # Check length is as expected
-    if ensemble == "GARD-LENS" and gcm == "ecearth3" and ssp == "historical":
+    if ensemble == "GARD-LENS" and gcm in ["ecearth3", "EC-Earth3"] and ssp == "historical":
         expected_length = 2014 - 1970 + 1  # GARD-LENS EC-Earth3
         assert len(data) == expected_length, (
             f"ds length is {len(data)}, expected {expected_length}"
