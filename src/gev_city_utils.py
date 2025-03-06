@@ -1,30 +1,16 @@
 import os
+
 import numpy as np
 import pandas as pd
 
 import gev_utils as gevu
-
 from utils import roar_code_path as project_code_path
 from utils import roar_data_path as project_data_path
-
+from utils import check_data_length
 
 ###########################
 # Fit GEV to single city
 ###########################
-def check_data_length(data, ensemble, gcm, ssp, years):
-    # Check length is as expected
-    if ensemble == "GARD-LENS" and gcm == "EC-Earth3" and ssp == "historical":
-        expected_length = 2014 - 1970 + 1  # GARD-LENS EC-Earth3
-        assert len(data) == expected_length, (
-            f"ds length is {len(data)}, expected {expected_length}"
-        )
-    else:
-        expected_length = years[1] - years[0] + 1
-        assert len(data) == expected_length, (
-            f"ds length is {len(data)}, expected {expected_length}"
-        )
-
-
 def fit_gev_city(
     city,
     metric_id,
