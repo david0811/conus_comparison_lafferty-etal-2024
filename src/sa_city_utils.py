@@ -188,7 +188,7 @@ def calculate_df_uc(df, plot_col, calculate_gev_uc=True, n_min_members=5):
 
     def get_quantile_range(df, groupby_cols, plot_col):
         df_tmp = pd.merge(
-            df[df["quantile"] == "p975"].rename(
+            df[df["quantile"] == "q975"].rename(
                 columns={plot_col: f"{plot_col}_upper"}
             ),
             df[df["quantile"] == "q025"].rename(

@@ -284,7 +284,7 @@ def plot_conf_intvs(df, plot_col, positions, color, ax, limits=None, lw=1.5, s=2
     ax.plot(
         [
             data[data["quantile"] == "q025"][plot_col].values[0],
-            data[data["quantile"] == "p975"][plot_col].values[0],
+            data[data["quantile"] == "q975"][plot_col].values[0],
         ],
         [positions, positions],
         color=color,
@@ -347,7 +347,8 @@ def plot_city_results(
 
     # Tidy
     ax.set_xticklabels(uc_names, rotation=45, fontsize=10)
-    ax.set_ylabel(f"Range {units}")
+    unit_str = "" if "chfc" in plot_col else f" {units}"
+    ax.set_ylabel(f"Range{unit_str}")
     ax.set_xlabel("")
     ax.grid(alpha=0.2, zorder=3)
     ax.set_ylim([0, ax.get_ylim()[1]])
@@ -452,9 +453,9 @@ def plot_city_results(
 
 
     # Get xlabel
-    xlabel_str = "Change in" if "diff" in plot_col else ""
+    xlabel_str = "Change in" if "diff" in plot_col else "Change factor:" if "chfc" in plot_col else ""
     return_level_str = plot_col.split('yr')[0]
-    ax.set_xlabel(f"{xlabel_str} {return_level_str}-year return level {units}")
+    ax.set_xlabel(f"{xlabel_str} {return_level_str}-year return level{unit_str}")
 
     # Legend
     if legend:

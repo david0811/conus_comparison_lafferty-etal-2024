@@ -244,6 +244,15 @@ def fit_gev_city(
         return_levels_diff_q975 = np.percentile(
             scalar * (bootstrap_rls_proj - bootstrap_rls_hist), 97.5, axis=0
         )
+        # Change factors
+        return_levels_chfc_main = return_levels_proj_main / return_levels_hist_main
+        return_levels_chfc_q025 = np.percentile(
+            scalar * bootstrap_rls_proj / bootstrap_rls_hist, 2.5, axis=0
+        )
+        return_levels_chfc_q975 = np.percentile(
+            scalar * bootstrap_rls_proj / bootstrap_rls_hist, 97.5, axis=0
+        )
+
         # Store in dataframe
         df_return_levels = pd.DataFrame(
             {
@@ -273,6 +282,14 @@ def fit_gev_city(
                         return_levels_diff_main[i],
                         return_levels_diff_q025[i],
                         return_levels_diff_q975[i],
+                    ]
+                    for i, period in enumerate(periods_for_level)
+                },
+                **{
+                    f"{period}yr_return_level_chfc": [
+                        return_levels_chfc_main[i],
+                        return_levels_chfc_q025[i],
+                        return_levels_chfc_q975[i],
                     ]
                     for i, period in enumerate(periods_for_level)
                 },
@@ -354,14 +371,17 @@ def fit_gev_city(
             }
         )
 
+    # Return
     if stationary:
-        return pd.merge(
-            df_res,
-            df_return_levels,
-            on=["quantile", "ensemble", "gcm", "member", "ssp"],
-        )
+        # Merge
+        df_out = pd.merge(df_res, df_return_levels, on=["quantile", "ensemble", "gcm", "member", "ssp"],)
+        # Drop change factor results for min_tasmin since they are not meaningful
+        if metric_id == "min_tasmin":
+            df_out = df_out.drop(columns=[col for col in df_out.columns if "chfc" in col])
+        return df_out
     else:
-        return pd.merge(
+        # Merge
+        df_out = pd.merge(
             df_res,
             pd.merge(
                 df_return_levels,
@@ -370,6 +390,11 @@ def fit_gev_city(
             ),
             on=["quantile", "ensemble", "gcm", "member", "ssp"],
         )
+        # Drop change factor results for min_tasmin since they are not meaningful
+        if metric_id == "min_tasmin":
+            df_out = df_out.drop(columns=[col for col in df_out.columns if "chfc" in col])
+        
+        return df_out
 
 
 def fit_ensemble_gev_city(
@@ -431,13 +456,6 @@ def fit_ensemble_gev_city(
         If store=False, returns DataFrame with GEV fit results for all ensemble members.
         If store=True, saves results to CSV and returns None.
         Returns None if results file already exists.
-        
-    Notes
-    -----
-    Results are stored in CSV format with filename pattern:
-    {city}_{metric_id}_{hist_start}-{hist_end}_{proj_start}-{proj_end}_{fit_method}_{stat/nonstat}_nboot{n_boot}.csv
-    
-    Failed fits are logged to individual text files in the project's log directory.
     """
     
     # Get unique combos
@@ -447,7 +465,11 @@ def fit_ensemble_gev_city(
 
     # Check if done
     stat_str = "stat" if stationary else "nonstat"
-    file_name = f"{city}_{metric_id}_{hist_slice[0]}-{hist_slice[1]}_{proj_slice[0]}-{proj_slice[1]}_{fit_method}_{stat_str}_nboot{n_boot}.csv"
+    if stationary:
+        file_name = f"{city}_{metric_id}_{hist_slice[0]}-{hist_slice[1]}_{proj_slice[0]}-{proj_slice[1]}_{fit_method}_{stat_str}_nboot{n_boot}.csv"
+    else:
+        file_name = f"{city}_{metric_id}_{years[0]}-{years[1]}_{fit_method}_{stat_str}_nboot{n_boot}.csv"
+        
     if os.path.exists(
         f"{project_data_path}/extreme_value/cities/original_grid/freq/{file_name}"
     ):

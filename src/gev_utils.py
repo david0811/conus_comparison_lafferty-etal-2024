@@ -282,13 +282,26 @@ def _gev_parametric_bootstrap_1d_nonstationary(
             for period in periods_for_level
             for return_period_year in return_period_years
         ]
+        # Return level differences
         return_level_diffs_out[i, :] = [
+             - 
+            estimate_return_level(
+                period,
+                loc_intcp_tmp + loc_trend_tmp * (return_period_diff[0] - years[0]),
+                scale_tmp,
+                shape_tmp,
+            )
+            for period in periods_for_level
+            for return_period_diff in return_period_diffs
+        ]
+        # Return level change factors
+        return_level_chfc_out[i, :] = [
             estimate_return_level(
                 period,
                 loc_intcp_tmp + loc_trend_tmp * (return_period_diff[1] - years[0]),
                 scale_tmp,
                 shape_tmp,
-            ) - 
+            ) / 
             estimate_return_level(
                 period,
                 loc_intcp_tmp + loc_trend_tmp * (return_period_diff[0] - years[0]),
@@ -451,14 +464,14 @@ def fit_gev_xr_bootstrap(
 
     ds = xr.Dataset(
         data_vars=dict(
-            loc=(["n_boot", "lat", "lon"], gev_params[:, 0, :, :]),
-            scale=(["n_boot", "lat", "lon"], gev_params[:, 1, :, :]),
-            shape=(["n_boot", "lat", "lon"], gev_params[:, 2, :, :]),
+            loc=(["n_boot", lat_name, lon_name], gev_params[:, 0, :, :]),
+            scale=(["n_boot", lat_name, lon_name], gev_params[:, 1, :, :]),
+            shape=(["n_boot", lat_name, lon_name], gev_params[:, 2, :, :]),
         ),
         coords={
             "n_boot": np.arange(n_boot),
-            "lat": ds_fit_main[lat_name],
-            "lon": ds_fit_main[lon_name],
+            lat_name: ds_fit_main[lat_name],
+            lon_name: ds_fit_main[lon_name],
         },
     )
 
