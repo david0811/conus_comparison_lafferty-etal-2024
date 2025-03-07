@@ -138,7 +138,7 @@ def fit_gev_city(
                 )
             )
         else:
-            bootstrap_params, bootstrap_rls, bootstrap_rl_diffs = (
+            bootstrap_params, bootstrap_rls, bootstrap_rl_diffs, bootstrap_rl_chfcs = (
                 gevu._gev_parametric_bootstrap_1d_nonstationary(
                     params=params,
                     years=years,
@@ -148,6 +148,7 @@ def fit_gev_city(
                     periods_for_level=periods_for_level,
                     return_period_years=return_period_years,
                     return_period_diffs=return_period_diffs,
+                    return_samples=True
                 )
             )
 
@@ -162,8 +163,8 @@ def fit_gev_city(
         proj_params_q975 = np.percentile(bootstrap_params_proj, 97.5, axis=0)
     else:
         # Parameters
-        params_q025 = np.percentile(bootstrap_params, 2.5, axis=0)
-        params_q975 = np.percentile(bootstrap_params, 97.5, axis=0)
+        params_q025 = np.nanpercentile(bootstrap_params, 2.5, axis=0)
+        params_q975 = np.nanpercentile(bootstrap_params, 97.5, axis=0)
 
     # Combine
     if stationary:
@@ -238,19 +239,19 @@ def fit_gev_city(
 
         # Diffs
         return_levels_diff_main = return_levels_proj_main - return_levels_hist_main
-        return_levels_diff_q025 = np.percentile(
-            scalar * (bootstrap_rls_proj - bootstrap_rls_hist), 2.5, axis=0
+        return_levels_diff_q025 = np.nanpercentile(
+            (scalar * bootstrap_rls_proj) - (scalar * bootstrap_rls_hist), 2.5, axis=0
         )
-        return_levels_diff_q975 = np.percentile(
-            scalar * (bootstrap_rls_proj - bootstrap_rls_hist), 97.5, axis=0
+        return_levels_diff_q975 = np.nanpercentile(
+            (scalar * bootstrap_rls_proj) - (scalar * bootstrap_rls_hist), 97.5, axis=0
         )
         # Change factors
         return_levels_chfc_main = return_levels_proj_main / return_levels_hist_main
-        return_levels_chfc_q025 = np.percentile(
-            scalar * bootstrap_rls_proj / bootstrap_rls_hist, 2.5, axis=0
+        return_levels_chfc_q025 = np.nanpercentile(
+            (scalar * bootstrap_rls_proj) / (scalar * bootstrap_rls_hist), 2.5, axis=0
         )
-        return_levels_chfc_q975 = np.percentile(
-            scalar * bootstrap_rls_proj / bootstrap_rls_hist, 97.5, axis=0
+        return_levels_chfc_q975 = np.nanpercentile(
+            (scalar * bootstrap_rls_proj) / (scalar * bootstrap_rls_hist), 97.5, axis=0
         )
 
         # Store in dataframe
@@ -307,8 +308,8 @@ def fit_gev_city(
             for period in periods_for_level
             for return_period_year in return_period_years
         ]
-        return_levels_q025 = np.percentile(scalar * bootstrap_rls, 2.5, axis=0)
-        return_levels_q975 = np.percentile(scalar * bootstrap_rls, 97.5, axis=0)
+        return_levels_q025 = np.nanpercentile(scalar * bootstrap_rls, 2.5, axis=0)
+        return_levels_q975 = np.nanpercentile(scalar * bootstrap_rls, 97.5, axis=0)
 
         # Store in dataframe
         df_return_levels = pd.DataFrame(
@@ -349,8 +350,29 @@ def fit_gev_city(
             for period in periods_for_level
             for return_period_diff in return_period_diffs
         ]
-        return_level_diffs_q025 = np.percentile(scalar * bootstrap_rl_diffs, 2.5, axis=0)
-        return_level_diffs_q975 = np.percentile(scalar * bootstrap_rl_diffs, 97.5, axis=0)
+        return_level_diffs_q025 = np.nanpercentile(scalar * bootstrap_rl_diffs, 2.5, axis=0)
+        return_level_diffs_q975 = np.nanpercentile(scalar * bootstrap_rl_diffs, 97.5, axis=0)
+
+        return_level_chfcs_main = [
+            (scalar * (
+            gevu.estimate_return_level(
+                period,
+                params[0] + params[1] * (return_period_diff[1] - years[0]),
+                params[2],
+                params[3],
+            ))) /
+            (scalar * (
+            gevu.estimate_return_level(
+                period,
+                params[0] + params[1] * (return_period_diff[0] - years[0]),
+                params[2],
+                params[3],
+            )))
+            for period in periods_for_level
+            for return_period_diff in return_period_diffs
+        ]
+        return_level_chfcs_q025 = np.nanpercentile(scalar * bootstrap_rl_chfcs, 2.5, axis=0)
+        return_level_chfcs_q975 = np.nanpercentile(scalar * bootstrap_rl_chfcs, 97.5, axis=0)
 
         df_return_level_diffs = pd.DataFrame(
             {
@@ -364,6 +386,15 @@ def fit_gev_city(
                 return_level_diffs_main[i_period * len(return_period_diffs) + i_diff],
                 return_level_diffs_q025[i_period * len(return_period_diffs) + i_diff],
                 return_level_diffs_q975[i_period * len(return_period_diffs) + i_diff],
+                ]
+                for i_period, period in enumerate(periods_for_level)
+                for i_diff, return_period_diff in enumerate(return_period_diffs)
+            },
+            **{
+                f"{period}yr_return_level_chfc_{return_period_diff[1]}-{return_period_diff[0]}": [
+                return_level_chfcs_main[i_period * len(return_period_diffs) + i_diff],
+                return_level_chfcs_q025[i_period * len(return_period_diffs) + i_diff],
+                return_level_chfcs_q975[i_period * len(return_period_diffs) + i_diff],
                 ]
                 for i_period, period in enumerate(periods_for_level)
                 for i_diff, return_period_diff in enumerate(return_period_diffs)

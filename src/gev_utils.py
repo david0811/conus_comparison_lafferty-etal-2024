@@ -250,6 +250,7 @@ def _gev_parametric_bootstrap_1d_nonstationary(
     periods_for_level,
     return_period_years,
     return_period_diffs,
+    return_samples=False,
 ):
     """
     Generate parametric bootstrap samples for GEV.
@@ -259,6 +260,7 @@ def _gev_parametric_bootstrap_1d_nonstationary(
     params_out = np.zeros((n_boot, 4))
     return_levels_out = np.zeros((n_boot, len(periods_for_level) * len(return_period_years)))
     return_level_diffs_out = np.zeros((n_boot, len(periods_for_level) * len(return_period_diffs)))
+    return_level_chfcs_out = np.zeros((n_boot, len(periods_for_level) * len(return_period_diffs)))
 
     # Bootstrap sampling
     boot_sample = gev.rvs(
@@ -284,7 +286,13 @@ def _gev_parametric_bootstrap_1d_nonstationary(
         ]
         # Return level differences
         return_level_diffs_out[i, :] = [
-             - 
+            estimate_return_level(
+                period,
+                loc_intcp_tmp + loc_trend_tmp * (return_period_diff[1] - years[0]),
+                scale_tmp,
+                shape_tmp,
+            )
+            - 
             estimate_return_level(
                 period,
                 loc_intcp_tmp + loc_trend_tmp * (return_period_diff[0] - years[0]),
@@ -295,7 +303,7 @@ def _gev_parametric_bootstrap_1d_nonstationary(
             for return_period_diff in return_period_diffs
         ]
         # Return level change factors
-        return_level_chfc_out[i, :] = [
+        return_level_chfcs_out[i, :] = [
             estimate_return_level(
                 period,
                 loc_intcp_tmp + loc_trend_tmp * (return_period_diff[1] - years[0]),
@@ -312,12 +320,16 @@ def _gev_parametric_bootstrap_1d_nonstationary(
             for return_period_diff in return_period_diffs
         ]
 
-    # Return 95% intervals
-    return (
-        np.nanpercentile(params_out, [2.5, 97.5], axis=0),
-        np.nanpercentile(return_levels_out, [2.5, 97.5], axis=0),
-        np.nanpercentile(return_level_diffs_out, [2.5, 97.5], axis=0),
-    )
+    # Return samples or 95% intervals
+    if return_samples:
+        return params_out, return_levels_out, return_level_diffs_out, return_level_chfcs_out
+    else:
+        return (
+            np.nanpercentile(params_out, [2.5, 97.5], axis=0),
+            np.nanpercentile(return_levels_out, [2.5, 97.5], axis=0),
+            np.nanpercentile(return_level_diffs_out, [2.5, 97.5], axis=0),
+            np.nanpercentile(return_level_chfcs_out, [2.5, 97.5], axis=0),
+        )   
 
 
 def fit_gev_xr(
