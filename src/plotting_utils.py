@@ -91,16 +91,18 @@ def plot_uc_map(
     if norm is None:
         pass
     elif norm == "relative":
-        uc_tot = uc["ssp_uc"] + uc["gcm_uc"] + uc["iv_uc"] + uc["dsc_uc"]
+        uc_tot = uc["ssp_uc"] + uc["gcm_uc"] + uc["iv_uc"] + uc["dsc_uc"] + uc["gev_uc"]
         uc["ssp_uc"] = uc["ssp_uc"] / uc_tot
         uc["gcm_uc"] = uc["gcm_uc"] / uc_tot
         uc["iv_uc"] = uc["iv_uc"] / uc_tot
         uc["dsc_uc"] = uc["dsc_uc"] / uc_tot
+        uc["gev_uc"] = uc["gev_uc"] / uc_tot
     else:
         uc["ssp_uc"] = uc["ssp_uc"] / uc[norm]
         uc["gcm_uc"] = uc["gcm_uc"] / uc[norm]
         uc["iv_uc"] = uc["iv_uc"] / uc[norm]
         uc["dsc_uc"] = uc["dsc_uc"] / uc[norm]
+        uc["gev_uc"] = uc["gev_uc"] / uc[norm]
 
     # Labels
     uc_labels = {
@@ -108,6 +110,7 @@ def plot_uc_map(
         "gcm_uc": "Response uncertainty",
         "iv_uc": "Internal variability",
         "dsc_uc": "Downscaling uncertainty",
+        "gev_uc": "GEV fit uncertainty",
     }
 
     title_labels = {
@@ -131,8 +134,8 @@ def plot_uc_map(
     if axs is None:
         fig, axs = plt.subplots(
             1,
-            5,
-            figsize=(12, 3),
+            6,
+            figsize=(14, 3),
             layout="constrained",
             subplot_kw=dict(projection=ccrs.LambertConformal()),
         )

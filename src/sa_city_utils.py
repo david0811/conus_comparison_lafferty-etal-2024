@@ -209,7 +209,7 @@ def calculate_df_uc(df, plot_col, calculate_gev_uc=True, n_min_members=5):
         df_main = df.copy()
 
     combos_to_include = (
-        df.groupby(["ensemble", "gcm", "ssp"]).count()[plot_col] >= n_min_members
+        df_main.groupby(["ensemble", "gcm", "ssp"]).count()[plot_col] >= n_min_members
     )
 
     # Scenario uncertainty
