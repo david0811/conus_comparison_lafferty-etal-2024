@@ -25,7 +25,7 @@ roar_data_path = (
     "/storage/group/pches/default/users/dcl5300/conus_comparison_lafferty-etal-2024"
 )
 hopper_code_path = "/home/fs01/dcl257/projects/conus_comparison_lafferty-etal-2024"
-hopper_data_path = "/home/fs01/dcl257/projects/data/conus_comparison_lafferty-etal-2024"
+hopper_data_path = "/home/fs01/dcl257/data/conus_comparison_lafferty-etal-2024"
 
 ################
 # Cities
