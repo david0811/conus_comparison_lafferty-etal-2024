@@ -1,178 +1,73 @@
-import math
 import os
 from functools import partial
 from glob import glob
 
 import dask
 import numpy as np
-import pandas as pd
 import xarray as xr
-from scipy import special
-from scipy.optimize import fsolve, minimize
+from scipy.optimize import minimize
 from scipy.stats import genextreme as gev
 
 import sdfc_classes as sd
-from utils import get_unique_loca_metrics, loca_gard_mapping
+from lmom_utils import (
+    pargev_numba,
+    pargev_numpy,
+    samlmom3_numba,
+    samlmom3_numpy,
+    samlmom3_bootstrap_numba,
+    pargev_bootstrap_numba,
+)
+from utils import get_unique_loca_metrics, check_data_length, map_store_names
 from utils import roar_code_path as project_code_path
 from utils import roar_data_path as project_data_path
-
-###########################################################
-# L-moments GEV fitting
-# https://github.com/xiaoganghe/python-climate-visuals
-###########################################################
-
-
-# Calculate samples L-moments
-def samlmom3(sample):
-    """
-    samlmom3 returns the first three L-moments of samples
-    sample is the 1-d array
-    n is the total number of the samples, j is the j_th sample
-    """
-    n = len(sample)
-    sample = np.sort(sample.reshape(n))[::-1]
-    b0 = np.mean(sample)
-    b1 = np.array(
-        [(n - j - 1) * sample[j] / n / (n - 1) for j in range(n)]
-    ).sum()
-    b2 = np.array(
-        [
-            (n - j - 1) * (n - j - 2) * sample[j] / n / (n - 1) / (n - 2)
-            for j in range(n - 1)
-        ]
-    ).sum()
-    lmom1 = b0
-    lmom2 = 2 * b1 - b0
-    lmom3 = 6 * (b2 - b1) + b0
-
-    return lmom1, lmom2, lmom3
-
-
-# Estimate GEV parameters using the function solver
-def pargev_fsolve(lmom):
-    """
-    pargev_fsolve estimates the parameters of the Generalized Extreme Value
-    distribution given the L-moments of samples
-    """
-    lmom_ratios = [lmom[0], lmom[1], lmom[2] / lmom[1]]
-    f = lambda x, t: 2 * (1 - 3 ** (-x)) / (1 - 2 ** (-x)) - 3 - t
-    G = fsolve(f, 0.01, lmom_ratios[2])[0]
-    para3 = G
-    GAM = math.gamma(1 + G)
-    para2 = lmom_ratios[1] * G / (GAM * (1 - 2**-G))
-    para1 = lmom_ratios[0] - para2 * (1 - GAM) / G
-    return para1, para2, para3
-
-
-# Estimate GEV parameters using numerical approximations
-def pargev(lmom):
-    """
-    pargev returns the parameters of the Generalized Extreme Value
-    distribution given the L-moments of samples
-    """
-    lmom_ratios = [lmom[0], lmom[1], lmom[2] / lmom[1]]
-
-    SMALL = 1e-5
-    eps = 1e-6
-    maxit = 20
-
-    # EU IS EULER'S CONSTANT
-    EU = 0.57721566
-    DL2 = math.log(2)
-    DL3 = math.log(3)
-
-    # COEFFICIENTS OF RATIONAL-FUNCTION APPROXIMATIONS FOR XI
-    A0 = 0.28377530
-    A1 = -1.21096399
-    A2 = -2.50728214
-    A3 = -1.13455566
-    A4 = -0.07138022
-    B1 = 2.06189696
-    B2 = 1.31912239
-    B3 = 0.25077104
-    C1 = 1.59921491
-    C2 = -0.48832213
-    C3 = 0.01573152
-    D1 = -0.64363929
-    D2 = 0.08985247
-
-    T3 = lmom_ratios[2]
-    if lmom_ratios[1] <= 0 or abs(T3) >= 1:
-        raise ValueError("Invalid L-Moments")
-
-    if T3 <= 0:
-        G = (A0 + T3 * (A1 + T3 * (A2 + T3 * (A3 + T3 * A4)))) / (
-            1 + T3 * (B1 + T3 * (B2 + T3 * B3))
-        )
-
-        if T3 >= -0.8:
-            para3 = G
-            GAM = math.exp(special.gammaln(1 + G))
-            para2 = lmom_ratios[1] * G / (GAM * (1 - 2**-G))
-            para1 = lmom_ratios[0] - para2 * (1 - GAM) / G
-            return para1, para2, para3
-        elif T3 <= -0.97:
-            G = 1 - math.log(1 + T3) / DL2
-
-        T0 = (T3 + 3) * 0.5
-        for IT in range(1, maxit):
-            X2 = 2**-G
-            X3 = 3**-G
-            XX2 = 1 - X2
-            XX3 = 1 - X3
-            T = XX3 / XX2
-            DERIV = (XX2 * X3 * DL3 - XX3 * X2 * DL2) / (XX2**2)
-            GOLD = G
-            G -= (T - T0) / DERIV
-
-            if abs(G - GOLD) <= eps * G:
-                para3 = G
-                GAM = math.exp(special.gammaln(1 + G))
-                para2 = lmom_ratios[1] * G / (GAM * (1 - 2**-G))
-                para1 = lmom_ratios[0] - para2 * (1 - GAM) / G
-                return para1, para2, para3
-        raise Exception("Iteration has not converged")
-    else:
-        Z = 1 - T3
-        G = (-1 + Z * (C1 + Z * (C2 + Z * C3))) / (1 + Z * (D1 + Z * D2))
-        if abs(G) < SMALL:
-            para2 = lmom_ratios[1] / DL2
-            para1 = lmom_ratios[0] - EU * para2
-            para3 = 0
-        else:
-            para3 = G
-            GAM = math.exp(special.gammaln(1 + G))
-            para2 = lmom_ratios[1] * G / (GAM * (1 - 2**-G))
-            para1 = lmom_ratios[0] - para2 * (1 - GAM) / G
-        return para1, para2, para3
 
 
 ##############################################
 # Return level utils
 # https://github.com/jdossgollin/2021-TXtreme
 ##############################################
-
-
 def estimate_return_level(return_period, loc, scale, shape):
     """
     Calculate the return level given GEV parameters.
+    Works for both scalars and arrays.
     """
     quantile = 1 - 1 / return_period
-    level = loc + scale / shape * (1 - (-np.log(quantile)) ** (shape))
+    if np.isscalar(shape) and np.isclose(shape, 0):
+        level = loc - scale * np.log(-np.log(quantile))
+    else:
+        level = np.where(
+            np.isclose(shape, 0),
+            loc - scale * np.log(-np.log(quantile)),
+            loc + scale / shape * (1 - (-np.log(quantile)) ** shape),
+        )
     return level
 
 
-def xr_estimate_return_level(return_period, ds, return_params=False):
+def xr_estimate_return_level(return_period, ds, scalar, return_params=False):
     """
     Calculate the return level given GEV parameters.
     """
-    ds[f"{int(return_period)}yr_return_level"] = estimate_return_level(
-        return_period, ds["loc"], ds["scale"], ds["shape"]
+    return_level = xr.apply_ufunc(
+        estimate_return_level,
+        return_period,
+        ds["loc"],
+        ds["scale"],
+        ds["shape"],
+        input_core_dims=[[], ds["loc"].dims, ds["loc"].dims, ds["loc"].dims],
+        output_core_dims=[ds["loc"].dims],
+        vectorize=True,
+        dask="allowed",
     )
+
+    # Scale the return level
+    return_level = scalar * return_level
+
+    ds_out = xr.Dataset({f"{int(return_period)}yr_return_level": return_level})
+
     if not return_params:
-        return ds.drop(["loc", "scale", "shape"])
+        return ds_out
     else:
-        return ds
+        return xr.merge([ds, ds_out])
 
 
 def estimate_return_period(threshold, loc, scale, shape):
@@ -215,38 +110,78 @@ def optimizer(func, x0, args, disp):
 
 
 def _fit_gev_1d_stationary(
-    data, expected_length, fit_method="lmom", optimizer=optimizer
+    data, expected_length=None, fit_method="lmom", optimizer=optimizer, numba=True
 ):
     """
     Fit GEV to 1-dimensional data. Note we follow scipy convention
     of negating the shape parameter relative to other sources.
     """
-
-    # Check if all finite
-    if not np.isfinite(data).all():
+    # Return NaN if all Nans
+    if np.isnan(data).all():
         return (np.nan, np.nan, np.nan)
 
-    # Round data
-    data = np.round(data, 4)
+    # Check length of non-NaNs
+    if expected_length is not None:
+        non_nans = np.count_nonzero(~np.isnan(data))
+        assert non_nans == expected_length, f"data length is {non_nans}, expected {expected_length}"
 
-    # # There should be no more than 1 consecutive duplicate
-    # assert (np.diff(data) == 0.0).sum() <= 1, (
-    #     "consecutive duplicate values in data"
-    # )
-    # Check length
-    assert len(data) == expected_length, (
-        f"data length is {len(data)}, expected {expected_length}"
-    )
     # Some GARD-LENS outputs have all values zero
     if (data == 0.0).all():
         return (np.nan, np.nan, np.nan)
+
     # Fit
+    if numba:
+        samlmom3 = samlmom3_numba
+        pargev = pargev_numba
+    else:
+        samlmom3 = samlmom3_numpy
+        pargev = pargev_numpy
     if fit_method == "lmom":
-        lmom = samlmom3(data)
-        return pargev(lmom)
+        loc, scale, shape = pargev(samlmom3(data))
+        return (loc, scale, shape)
     elif fit_method == "mle":
         shape, location, scale = gev.fit(data, optimizer=optimizer)
-        return location, scale, shape
+        return (location, scale, shape)
+
+
+def _gev_parametric_bootstrap_1d_stationary(
+    loc,
+    scale,
+    shape,
+    n_data,
+    n_boot,
+    fit_method,
+    periods_for_level,
+    return_samples=False,
+    numba=True,
+):
+    """
+    Generate parametric bootstrap samples for GEV.
+    """
+    params_out = np.full((n_boot, 3), np.nan)
+    return_levels_out = np.full((n_boot, len(periods_for_level)), np.nan)
+
+    # Bootstrap sampling
+    if not np.isnan([loc, scale, shape]).any():
+        boot_samples = gev.rvs(shape, loc=loc, scale=scale, size=(n_boot, n_data))
+        for i in range(n_boot):
+            # Do the fit
+            params_out[i, :] = _fit_gev_1d_stationary(
+                boot_samples[i], n_data, fit_method=fit_method, numba=numba
+            )
+            # Return levels
+            return_levels_out[i, :] = estimate_return_level(
+                np.array(periods_for_level), *params_out[i]
+            )
+
+    # Return 95% intervals
+    if return_samples:
+        return params_out, return_levels_out
+    else:
+        return (
+            np.nanpercentile(params_out, [2.5, 97.5], axis=0),
+            np.nanpercentile(return_levels_out, [2.5, 97.5], axis=0),
+        )
 
 
 def negative_log_likelihood(params, data, covariate):
@@ -280,23 +215,14 @@ def _fit_gev_1d_nonstationary(data, years, fit_method="mle"):
     if not np.isfinite(data).all():
         return (np.nan, np.nan, np.nan, np.nan)
 
-    # Round data
-    data = np.round(data, 4)
-
-    # # There should be no more than 1 consecutive duplicate
-    # assert (np.diff(data) == 0.0).sum() <= 1, (
-    #     "consecutive duplicate values in data"
-    # )
-
     # Check length
     expected_length = years[1] - years[0] + 1
-    assert len(data) == expected_length, (
-        f"data length is {len(data)}, expected {expected_length}"
-    )
+    assert len(data) == expected_length, f"data length is {len(data)}, expected {expected_length}"
+
     # Fit
     if fit_method == "mle":
         # Initial params from L-moments
-        loc, scale, shape = pargev(samlmom3(data))
+        loc, scale, shape = pargev_numba(samlmom3_numba(data))
         initial_params = [shape, loc, 0.0, scale]
         # Fit
         return nonstationary_optimizer(
@@ -315,6 +241,97 @@ def _fit_gev_1d_nonstationary(data, years, fit_method="mle"):
         return (np.nan, np.nan, np.nan, np.nan)
 
 
+def _gev_parametric_bootstrap_1d_nonstationary(
+    params,
+    years,
+    n_data,
+    n_boot,
+    fit_method,
+    periods_for_level,
+    return_period_years,
+    return_period_diffs,
+    return_samples=False,
+):
+    """
+    Generate parametric bootstrap samples for GEV.
+    """
+    loc_intcp, loc_trend, scale, shape = params
+
+    params_out = np.zeros((n_boot, 4))
+    return_levels_out = np.zeros((n_boot, len(periods_for_level) * len(return_period_years)))
+    return_level_diffs_out = np.zeros((n_boot, len(periods_for_level) * len(return_period_diffs)))
+    return_level_chfcs_out = np.zeros((n_boot, len(periods_for_level) * len(return_period_diffs)))
+
+    # Bootstrap sampling
+    boot_sample = gev.rvs(
+        shape,
+        loc=loc_intcp + loc_trend * np.arange(n_data),
+        scale=scale,
+        size=(n_boot, n_data),
+    )
+    for i in range(n_boot):
+        # Do the fit
+        params_out[i, :] = _fit_gev_1d_nonstationary(boot_sample[i], years, fit_method=fit_method)
+        # Return levels
+        loc_intcp_tmp, loc_trend_tmp, scale_tmp, shape_tmp = params_out[i, :]
+        return_levels_out[i, :] = [
+            estimate_return_level(
+                period,
+                loc_intcp_tmp + loc_trend_tmp * (return_period_year - years[0]),
+                scale_tmp,
+                shape_tmp,
+            )
+            for period in periods_for_level
+            for return_period_year in return_period_years
+        ]
+        # Return level differences
+        return_level_diffs_out[i, :] = [
+            estimate_return_level(
+                period,
+                loc_intcp_tmp + loc_trend_tmp * (return_period_diff[1] - years[0]),
+                scale_tmp,
+                shape_tmp,
+            )
+            - 
+            estimate_return_level(
+                period,
+                loc_intcp_tmp + loc_trend_tmp * (return_period_diff[0] - years[0]),
+                scale_tmp,
+                shape_tmp,
+            )
+            for period in periods_for_level
+            for return_period_diff in return_period_diffs
+        ]
+        # Return level change factors
+        return_level_chfcs_out[i, :] = [
+            estimate_return_level(
+                period,
+                loc_intcp_tmp + loc_trend_tmp * (return_period_diff[1] - years[0]),
+                scale_tmp,
+                shape_tmp,
+            ) / 
+            estimate_return_level(
+                period,
+                loc_intcp_tmp + loc_trend_tmp * (return_period_diff[0] - years[0]),
+                scale_tmp,
+                shape_tmp,
+            )
+            for period in periods_for_level
+            for return_period_diff in return_period_diffs
+        ]
+
+    # Return samples or 95% intervals
+    if return_samples:
+        return params_out, return_levels_out, return_level_diffs_out, return_level_chfcs_out
+    else:
+        return (
+            np.nanpercentile(params_out, [2.5, 97.5], axis=0),
+            np.nanpercentile(return_levels_out, [2.5, 97.5], axis=0),
+            np.nanpercentile(return_level_diffs_out, [2.5, 97.5], axis=0),
+            np.nanpercentile(return_level_chfcs_out, [2.5, 97.5], axis=0),
+        )   
+
+
 def fit_gev_xr(
     ds,
     metric_id,
@@ -324,6 +341,7 @@ def fit_gev_xr(
     fit_method,
     periods_for_level=None,
     levels_for_period=None,
+    numba=True,
 ):
     """
     Fit GEV to xarray data. Note we follow scipy convention
@@ -345,6 +363,7 @@ def fit_gev_xr(
             _fit_gev_1d_stationary,
             fit_method=fit_method,
             expected_length=expected_length,
+            numba=numba,
         )
         output_dtypes = [float] * 3
         output_core_dims = [[], [], []]
@@ -363,7 +382,7 @@ def fit_gev_xr(
         input_core_dims=[["time"]],
         output_core_dims=output_core_dims,
         vectorize=True,
-        dask="allowed",
+        dask="forbidden",
         output_dtypes=output_dtypes,
     )
 
@@ -389,12 +408,7 @@ def fit_gev_xr(
     # Return level calculations (for set periods)
     if periods_for_level is not None:
         for period in periods_for_level:
-            ds_out[f"{period}yr_return_level"] = (
-                scalar
-                * estimate_return_level(
-                    period, ds_out["loc"], ds_out["scale"], ds_out["shape"]
-                )
-            )
+            ds_out = xr_estimate_return_level(period, ds_out, scalar, return_params=True)
 
     # Return period calculations (for set levels)
     if levels_for_period is not None:
@@ -406,6 +420,85 @@ def fit_gev_xr(
     return ds_out
 
 
+def fit_gev_xr_bootstrap(
+    ensemble,
+    gcm,
+    member,
+    ssp,
+    years,
+    fit_method,
+    store_path,
+    return_samples=True,
+    n_boot=100,
+    stationary=True,
+    periods_for_level=None,
+    levels_for_period=None,
+):
+    """
+    Fit GEV to xarray data. Note we follow scipy convention
+    of negating the shape parameter relative to other sources.
+    """
+    # Read main fit results
+    if years == [1950, 2014]:
+        ssp_name = "historical"
+    else:
+        ssp_name = ssp
+    time_name = f"{years[0]}-{years[1]}" if years is not None else "all"
+    stat_name = "stat" if stationary else "nonstat"
+    store_name = (
+        f"{ensemble}_{gcm}_{member}_{ssp_name}_{time_name}_{stat_name}_{fit_method}_main.nc"
+    )
+
+    assert os.path.exists(f"{store_path}/{store_name}"), f"main fit {store_path}/{store_name} not found"
+    ds_fit_main = xr.open_dataset(f"{store_path}/{store_name}")
+
+    # Generate bootstrap sample (careful memory requirements!)
+    # Get dimensions for latitude and longitude, accounting for different naming conventions
+    lat_name = "latitude" if "latitude" in ds_fit_main.dims else "lat"
+    lon_name = "longitude" if "longitude" in ds_fit_main.dims else "lon"
+    n_lat = len(ds_fit_main[lat_name])
+    n_lon = len(ds_fit_main[lon_name])
+    n_time = years[1] - years[0] + 1
+
+    shape = np.nan_to_num(ds_fit_main["shape"].to_numpy().squeeze())
+    loc = np.nan_to_num(ds_fit_main["loc"].to_numpy().squeeze())
+    scale = np.nan_to_num(ds_fit_main["scale"].to_numpy().squeeze())
+
+    # Slightly faster to generate per bootstrap iteration?
+    boot_samples = np.stack(
+        [gev.rvs(shape, loc=loc, scale=scale, size=(n_time, n_lat, n_lon)) for _ in range(n_boot)]
+    )
+    boot_samples[boot_samples == 0] = np.nan
+
+    # Calculate GEV parameters for bootstrap replicates
+    lmoments = samlmom3_bootstrap_numba(boot_samples, bootstrap_dim=0)
+    gev_params = pargev_bootstrap_numba(lmoments)
+
+    ds = xr.Dataset(
+        data_vars=dict(
+            loc=(["n_boot", lat_name, lon_name], gev_params[:, 0, :, :]),
+            scale=(["n_boot", lat_name, lon_name], gev_params[:, 1, :, :]),
+            shape=(["n_boot", lat_name, lon_name], gev_params[:, 2, :, :]),
+        ),
+        coords={
+            "n_boot": np.arange(n_boot),
+            lat_name: ds_fit_main[lat_name],
+            lon_name: ds_fit_main[lon_name],
+        },
+    )
+
+    # Return level calculations (for set periods)
+    if periods_for_level is not None:
+        for period in periods_for_level:
+            ds = xr_estimate_return_level(period, ds, 1.0, return_params=True)
+
+    # Add coordinate labels
+    if return_samples:
+        return ds
+    else:
+        return ds.quantile([0.025, 0.975], dim="n_boot")
+
+
 def gev_fit_single(
     ensemble,
     gcm,
@@ -415,7 +508,6 @@ def gev_fit_single(
     years,
     stationary,
     fit_method,
-    store_path,
     periods_for_level,
     levels_for_period,
     project_data_path=project_data_path,
@@ -432,19 +524,18 @@ def gev_fit_single(
             ssp_name = ssp
         time_name = f"{years[0]}-{years[1]}" if years is not None else "all"
         stat_name = "stat" if stationary else "nonstat"
-        store_name = f"{ensemble}_{gcm}_{member}_{ssp_name}_{time_name}_{stat_name}_{fit_method}.nc"
+        store_name = (
+            f"{ensemble}_{gcm}_{member}_{ssp_name}_{time_name}_{stat_name}_{fit_method}_main.nc"
+        )
+        store_path = f"{project_data_path}/extreme_value/original_grid/{metric_id}"
 
         if os.path.exists(f"{store_path}/{store_name}"):
             return None
 
         # Read file
         if ensemble == "LOCA2":
-            files = glob(
-                f"{project_data_path}/metrics/LOCA2/{metric_id}_{gcm}_{member}_{ssp}_*.nc"
-            )
-            ds = xr.concat(
-                [xr.open_dataset(file) for file in files], dim="time"
-            )
+            files = glob(f"{project_data_path}/metrics/LOCA2/{metric_id}_{gcm}_{member}_{ssp}_*.nc")
+            ds = xr.concat([xr.open_dataset(file) for file in files], dim="time")
         else:
             ds = xr.open_dataset(
                 f"{project_data_path}/metrics/{ensemble}/{metric_id}_{gcm}_{member}_{ssp}.nc"
@@ -456,20 +547,7 @@ def gev_fit_single(
             ds = ds.sel(time=slice(years[0], years[1]))
 
         # Check length is as expected
-        if (
-            ensemble == "GARD-LENS"
-            and gcm == "ecearth3"
-            and ssp_name == "historical"
-        ):
-            expected_length = 2014 - 1970 + 1  # GARD-LENS EC-Earth3
-            assert len(ds["time"]) == expected_length, (
-                f"ds length is {len(ds['time'])}, expected {expected_length}"
-            )
-        else:
-            expected_length = years[1] - years[0] + 1
-            assert len(ds["time"]) == expected_length, (
-                f"ds length is {len(ds['time'])}, expected {expected_length}"
-            )
+        expected_length = check_data_length(ds["time"], ensemble, gcm, ssp_name, years)
 
         # Fit GEV
         ds_out = fit_gev_xr(
@@ -483,35 +561,126 @@ def gev_fit_single(
             levels_for_period=levels_for_period,
         )
         ## Store
-        # Update GARD GCMs
-        gcm_name = (
-            gcm.replace("canesm5", "CanESM5")
-            .replace("ecearth3", "EC-Earth3")
-            .replace("cesm2", "CESM2-LENS")
-        )
-        # Fix LOCA CESM mapping
-        if ensemble == "LOCA2" and gcm == "CESM2-LENS":
-            member_name = (
-                loca_gard_mapping[member]
-                if member in loca_gard_mapping.keys()
-                else member
-            )
-        else:
-            member_name = member
+        gcm_name, member_name = map_store_names(ensemble, gcm, member)
         ds_out = ds_out.expand_dims(
             {
                 "gcm": [gcm_name],
                 "member": [member_name],
                 "ssp": [ssp_name],
                 "ensemble": [ensemble],
+                "quantile": ["main"],
             }
         )
+        # Make sure not all NaNs
+        assert np.count_nonzero(~np.isnan(ds_out["loc"])), "all NaNs in fit"
         ds_out.to_netcdf(f"{store_path}/{store_name}")
+
     # Log if error
     except Exception as e:
         except_path = f"{project_code_path}/scripts/logs/gev_freq/"
         with open(
-            f"{except_path}/{ensemble}_{gcm}_{member}_{ssp}_{metric_id}_{stat_name}.txt",
+            f"{except_path}/{ensemble}_{gcm}_{member}_{ssp}_{metric_id}_{stat_name}_main.txt", "w"
+        ) as f:
+            f.write(str(e))
+
+
+def gev_fit_single_bootstrap(
+    ensemble,
+    gcm,
+    member,
+    ssp,
+    metric_id,
+    proj_slice,
+    hist_slice,
+    periods_for_level,
+    stationary=True,
+    fit_method="lmom",
+    n_boot=100,
+    levels_for_period=None,
+    project_data_path=project_data_path,
+    project_code_path=project_code_path,
+    years=None,  # dummy variable
+):
+    """
+    Read a single metric file and fit the GEV.
+    """
+    try:
+        # Check if done
+        time_name = f"{proj_slice[0]}-{proj_slice[1]}_{hist_slice[0]}-{hist_slice[1]}"
+        stat_name = "stat" if stationary else "nonstat"
+        store_name = (
+            f"{ensemble}_{gcm}_{member}_{ssp}_{time_name}_{stat_name}_{fit_method}_bootstrap.nc"
+        )
+        store_path = f"{project_data_path}/extreme_value/original_grid/{metric_id}"
+
+        if os.path.exists(f"{store_path}/{store_name}"):
+            return None
+
+        # Fit GEV: proj
+        ds_proj = fit_gev_xr_bootstrap(
+            ensemble=ensemble,
+            gcm=gcm,
+            member=member,
+            ssp=ssp,
+            years=proj_slice,
+            fit_method=fit_method,
+            n_boot=n_boot,
+            store_path=store_path,
+            periods_for_level=periods_for_level,
+            levels_for_period=levels_for_period,
+        )
+        # Fit GEV: hist
+        ds_hist = fit_gev_xr_bootstrap(
+            ensemble=ensemble,
+            gcm=gcm,
+            member=member,
+            ssp=ssp,
+            years=hist_slice,
+            fit_method=fit_method,
+            n_boot=n_boot,
+            store_path=store_path,
+            periods_for_level=periods_for_level,
+            levels_for_period=levels_for_period,
+        )
+
+        # Take differences
+        ds_diff = ds_proj - ds_hist
+
+        # Take quantiles
+        ds_hist = ds_hist.quantile([0.025, 0.975], dim="n_boot")
+        ds_proj = ds_proj.quantile([0.025, 0.975], dim="n_boot")
+        ds_diff = ds_diff.quantile([0.025, 0.975], dim="n_boot")
+
+        # Merge
+        ds_out = xr.concat(
+            [
+                ds_proj.assign_coords(time="proj"),
+                ds_hist.assign_coords(time="hist"),
+                ds_diff.assign_coords(time="diff"),
+            ],
+            dim="time",
+        )
+
+        # Store
+        gcm_name, member_name = map_store_names(ensemble, gcm, member)
+        ds_out = ds_out.expand_dims(
+            {
+                "gcm": [gcm_name],
+                "member": [member_name],
+                "ssp": [ssp],
+                "ensemble": [ensemble],
+            }
+        )
+        ds_out["quantile"] = ["q025", "q975"]
+        ds_out.attrs["historical_slice"] = f"{hist_slice[0]}-{hist_slice[1]}"
+        ds_out.attrs["projection_slice"] = f"{proj_slice[0]}-{proj_slice[1]}"
+        ds_out.to_netcdf(f"{store_path}/{store_name}")
+
+    # Log if error
+    except Exception as e:
+        except_path = f"{project_code_path}/scripts/logs/gev_freq/"
+        with open(
+            f"{except_path}/{ensemble}_{gcm}_{member}_{ssp}_{metric_id}_{stat_name}_bootstrap.txt",
             "w",
         ) as f:
             f.write(str(e))
@@ -526,15 +695,35 @@ def gev_fit_all(
     fit_method,
     periods_for_level,
     levels_for_period,
-    future_years,
+    proj_years,
     hist_years,
+    bootstrap,
+    include_STAR_ESDM=True
 ):
     """
     Fits a GEV distribution to the entire meta-ensemble of outputs.
     Set hist_years to None to skip historical.
     """
-    # Store results location
-    store_path = f"{project_data_path}/extreme_value/original_grid/{metric_id}"
+    if bootstrap:
+        gev_fit_func = partial(
+            gev_fit_single_bootstrap,
+            proj_slice=proj_years,
+            hist_slice=hist_years,
+            metric_id=metric_id,
+            periods_for_level=periods_for_level,
+            stationary=stationary,
+            fit_method=fit_method,
+            levels_for_period=levels_for_period,
+        )
+    else:
+        gev_fit_func = partial(
+            gev_fit_single,
+            stationary=stationary,
+            fit_method=fit_method,
+            periods_for_level=periods_for_level,
+            levels_for_period=levels_for_period,
+            metric_id=metric_id,
+        )
 
     #### LOCA2
     ensemble = "LOCA2"
@@ -545,21 +734,16 @@ def gev_fit_all(
     for index, row in df_loca.iterrows():
         # Get info
         gcm, member, ssp = row["gcm"], row["member"], row["ssp"]
-        years = hist_years if ssp == "historical" else future_years
-
+        years = hist_years if ssp == "historical" else proj_years        
+        if bootstrap and ssp == "historical":
+            continue
         if years is not None:
-            out = dask.delayed(gev_fit_single)(
+            out = dask.delayed(gev_fit_func)(
                 ensemble=ensemble,
                 gcm=gcm,
                 member=member,
                 ssp=ssp,
-                metric_id=metric_id,
                 years=years,
-                stationary=stationary,
-                fit_method=fit_method,
-                periods_for_level=periods_for_level,
-                levels_for_period=levels_for_period,
-                store_path=store_path,
             )
         delayed.append(out)
 
@@ -574,20 +758,18 @@ def gev_fit_all(
 
         # Fit for historical and ssp
         for ssp_id in ["historical", ssp]:
-            years = hist_years if ssp_id == "historical" else future_years
+            years = hist_years if ssp_id == "historical" else proj_years
+            if bootstrap and ssp_id == "historical":
+                continue
+            if not include_STAR_ESDM:
+                continue
             if years is not None:
-                out = dask.delayed(gev_fit_single)(
+                out = dask.delayed(gev_fit_func)(
                     ensemble=ensemble,
                     gcm=gcm,
                     member=member,
                     ssp=ssp,
-                    metric_id=metric_id,
                     years=years,
-                    stationary=stationary,
-                    fit_method=fit_method,
-                    periods_for_level=periods_for_level,
-                    levels_for_period=levels_for_period,
-                    store_path=store_path,
                 )
             delayed.append(out)
 
@@ -605,169 +787,19 @@ def gev_fit_all(
 
         # Do for historical and ssp
         for ssp_id in ["historical", ssp]:
-            years = hist_years if ssp_id == "historical" else future_years
+            years = hist_years if ssp_id == "historical" else proj_years
+            if bootstrap and ssp_id == "historical":
+                continue
+
             if years is not None:
-                out = dask.delayed(gev_fit_single)(
+                out = dask.delayed(gev_fit_func)(
                     ensemble=ensemble,
                     gcm=gcm,
                     member=member,
                     ssp=ssp,
-                    metric_id=metric_id,
                     years=years,
-                    stationary=stationary,
-                    fit_method=fit_method,
-                    periods_for_level=periods_for_level,
-                    levels_for_period=levels_for_period,
-                    store_path=store_path,
                 )
             delayed.append(out)
 
     # Compute all
     _ = dask.compute(*delayed)
-
-
-###########################
-# Fit GEV to single city
-###########################
-
-
-def fit_gev_city(
-    city,
-    metric_id,
-    ensemble,
-    gcm,
-    member,
-    ssp,
-    years,
-    stationary,
-    fit_method,
-    project_data_path=project_data_path,
-):
-    """
-    Fits the GEV model to a selected city, ensemble, GCM, member, SSP, and years.
-    """
-
-    # Read and select data
-    df = pd.read_csv(
-        f"{project_data_path}/metrics/cities/{city}_{metric_id}.csv"
-    )
-
-    df_sel = df[
-        (df["ensemble"] == ensemble)
-        & (df["gcm"] == gcm)
-        & (df["member"] == member)
-        & (df["ssp"] == ssp)
-        & (df["time"] >= years[0])
-        & (df["time"] <= years[1])
-    ]
-
-    # Skip invalid SSP-years combinations
-    if len(df_sel) == 0:
-        return None
-
-    # Info
-    agg, var_id = metric_id.split("_")
-    data = df_sel[var_id].to_numpy()
-    if agg == "min":
-        scalar = -1.0
-    else:
-        scalar = 1.0
-
-    # Check length is as expected
-    if ensemble == "GARD-LENS" and gcm == "ecearth3" and ssp == "historical":
-        expected_length = 2014 - 1970 + 1  # GARD-LENS EC-Earth3
-        assert len(df_sel) == expected_length, (
-            f"ds length is {len(df_sel)}, expected {expected_length}"
-        )
-    else:
-        expected_length = years[1] - years[0] + 1
-        assert len(df_sel) == expected_length, (
-            f"ds length is {len(df_sel)}, expected {expected_length}"
-        )
-
-    # Do the fit
-    if stationary:
-        res = _fit_gev_1d_stationary(
-            data=scalar * data,
-            expected_length=expected_length,
-            fit_method=fit_method,
-        )
-    else:
-        res = _fit_gev_1d_nonstationary(
-            data=scalar * data,
-            years=years,
-            fit_method=fit_method,
-        )
-
-    # Return a dataframe
-    if stationary:
-        df_res = pd.DataFrame(
-            {
-                "ensemble": [ensemble],
-                "gcm": [gcm],
-                "member": [member],
-                "ssp": [ssp],
-                "loc": [res[0]],
-                "scale": [res[1]],
-                "shape": [res[2]],
-            }
-        )
-    else:
-        df_res = pd.DataFrame(
-            {
-                "ensemble": [ensemble],
-                "gcm": [gcm],
-                "member": [member],
-                "ssp": [ssp],
-                "loc_intcp": [res[0]],
-                "loc_trend": [res[1]],
-                "scale": [res[2]],
-                "shape": [res[3]],
-            }
-        )
-
-    return df_res
-
-
-def fit_ensemble_gev_city(
-    city,
-    metric_id,
-    years,
-    stationary,
-    fit_method,
-    project_data_path=project_data_path,
-):
-    """
-    Fit city GEV across the entire ensemble.
-    """
-    # Get unique combos
-    df = pd.read_csv(
-        f"{project_data_path}/metrics/cities/{city}_{metric_id}.csv"
-    )
-    df = df.set_index(["ensemble", "gcm", "member", "ssp"]).sort_index()
-    combos = df.index.unique()
-
-    # Output df
-    df_out = []
-
-    # Loop through
-    for combo in combos:
-        ensemble, gcm, member, ssp = combo
-        try:
-            df_tmp = fit_gev_city(
-                city=city,
-                metric_id=metric_id,
-                ensemble=ensemble,
-                gcm=gcm,
-                member=member,
-                ssp=ssp,
-                years=years,
-                stationary=stationary,
-                fit_method=fit_method,
-            )
-            df_out.append(df_tmp)
-        except:
-            print(ensemble, gcm, ssp, member)
-
-    # Concat and return
-    return pd.concat(df_out)

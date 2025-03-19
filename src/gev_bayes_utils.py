@@ -69,10 +69,7 @@ def _fit_bayesian_gev(
             for p in return_periods:
                 z_p = pm.Deterministic(
                     f"{p}yr_return_level",
-                    scalar
-                    * (
-                        mu - sigma / xi * (1 - (-np.log(1 - 1.0 / p)) ** (-xi))
-                    ),
+                    scalar * (mu - sigma / xi * (1 - (-np.log(1 - 1.0 / p)) ** (-xi))),
                 )
     else:
         # Non-stationary model
@@ -87,9 +84,7 @@ def _fit_bayesian_gev(
             trend = pm.Normal("trend", mu=0.0, sigma=trend_sigma)
 
             # Calculate mu as a deterministic variable
-            mu = pm.Deterministic(
-                "mu", intcp + trend * time_zeroed, dims="time"
-            )
+            mu = pm.Deterministic("mu", intcp + trend * time_zeroed, dims="time")
 
             # Estimation
             gev = pmx.GenExtreme(
@@ -104,10 +99,7 @@ def _fit_bayesian_gev(
             for p in return_periods:
                 z_p = pm.Deterministic(
                     f"{p}yr_return_level",
-                    scalar
-                    * (
-                        mu - sigma / xi * (1 - (-np.log(1 - 1.0 / p)) ** (-xi))
-                    ),
+                    scalar * (mu - sigma / xi * (1 - (-np.log(1 - 1.0 / p)) ** (-xi))),
                     dims="time",
                 )
 
@@ -154,9 +146,7 @@ def fit_bayesian_gev_single(
         return None
 
     # Read and select data
-    df = pd.read_csv(
-        f"{project_data_path}/metrics/cities/{city}_{metric_id}.csv"
-    )
+    df = pd.read_csv(f"{project_data_path}/metrics/cities/{city}_{metric_id}.csv")
 
     df_sel = df[
         (df["ensemble"] == ensemble)
@@ -273,9 +263,7 @@ def fit_bayesian_gev_ensemble(
     Fits the Bayesian GEV model to a selected city, all ensemble members, GCMs, SSPs
     """
     # Get unique combos
-    df = pd.read_csv(
-        f"{project_data_path}/metrics/cities/{city}_{metric_id}.csv"
-    )
+    df = pd.read_csv(f"{project_data_path}/metrics/cities/{city}_{metric_id}.csv")
     df = df.set_index(["ensemble", "gcm", "member", "ssp"]).sort_index()
     combos = df.index.unique()
 
@@ -329,7 +317,7 @@ def gather_bayesian_gev_results_single(file, return_periods, years=None):
     # Read trace
     try:
         trace = az.from_netcdf(file)
-    except:
+    except Exception:
         os.remove(file)
         return None
     ensemble = trace.attrs["ensemble"]
@@ -339,7 +327,7 @@ def gather_bayesian_gev_results_single(file, return_periods, years=None):
 
     try:
         conv_flag = (az.summary(trace)["r_hat"] < 1.01).all()
-    except:
+    except Exception:
         os.remove(file)
         return None
 

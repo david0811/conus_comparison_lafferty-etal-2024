@@ -1,19 +1,17 @@
 import os
 from glob import glob
 
-import dask
 import numpy as np
+import dask
 import pandas as pd
 import xarray as xr
 
-import sa_utils as sau
 from utils import city_list, get_unique_loca_metrics, loca_gard_mapping
 from utils import roar_data_path as project_data_path
 
 #####################################
 # Calculating city timeseries metrics
 #####################################
-
 
 def get_city_timeseries(
     city,
@@ -48,9 +46,7 @@ def get_city_timeseries(
     # Fix LOCA CESM mapping
     if ensemble == "LOCA2" and gcm == "CESM2-LENS":
         member_name = (
-            loca_gard_mapping[member]
-            if member in loca_gard_mapping.keys()
-            else member
+            loca_gard_mapping[member] if member in loca_gard_mapping.keys() else member
         )
     else:
         member_name = member
@@ -103,9 +99,7 @@ def get_city_timeseries_all(
     Loop through all meta-ensemble members and calculate the city timeseries.
     """
     # Check if done
-    if os.path.exists(
-        f"{project_data_path}/metrics/cities/{city}_{metric_id}.csv"
-    ):
+    if os.path.exists(f"{project_data_path}/metrics/cities/{city}_{metric_id}.csv"):
         return None
 
     #### LOCA2
@@ -180,149 +174,368 @@ def get_city_timeseries_all(
         index=False,
     )
 
-
-#################################
-# Store all city GEV results
-#################################
-
-
-def remap_latlon(ds):
-    # Make sure lat/lon is named correctly
-    if "latitude" in ds.dims and "longitude" in ds.dims:
-        ds = ds.rename({"latitude": "lat", "longitude": "lon"})
-    # Set lon to [-180,180] if it is not already in that range
-    if ds["lon"].max() > 180:
-        ds["lon"] = ((ds["lon"] + 180) % 360) - 180
-
-    return ds
-
-
-def store_all_cities(
-    metric_id,
-    grid,
-    regrid_method,
-    proj_slice,
-    hist_slice,
-    stationary,
-    fit_method,
-    cols_to_keep,
-    col_identifier,
-    city_list,
-):
+#######################
+# UC for city df
+#######################
+def calculate_df_uc(df, plot_col, calculate_gev_uc=True, n_min_members=5):
     """
-    Store all cities GEV results as csv files for a given metric.
+    Calculate the uncertainty decomposition based on pd DataFrame.
     """
-    stat_str = "stat" if stationary else "nonstat"
-    grid_names = {
-        "LOCA2": "loca_grid",
-        "GARD-LENS": "gard_grid",
-        "original": "original_grid/freq",
-    }
-    # Check if done for all cities
-    if grid == "original":
-        regrid_str = ""
+
+    # Range functions
+    def get_range(x):
+        return x.max() - x.min()
+
+    def get_quantile_range(df, groupby_cols, plot_col):
+        df_tmp = pd.merge(
+            df[df["quantile"] == "q975"].rename(
+                columns={plot_col: f"{plot_col}_upper"}
+            ),
+            df[df["quantile"] == "q025"].rename(
+                columns={plot_col: f"{plot_col}_lower"}
+            ),
+            on=groupby_cols,
+        )
+
+        df_tmp[f"{plot_col}_diff"] = (
+            df_tmp[f"{plot_col}_upper"] - df_tmp[f"{plot_col}_lower"]
+        )
+        return df_tmp
+
+    # Get combos to include
+    if calculate_gev_uc:
+        df_main = df[df["quantile"] == "main"]
     else:
-        regrid_str = f"_{regrid_method}"
+        df_main = df.copy()
 
-    file_names = [
-        f"{city}_{metric_id}_{proj_slice}_{hist_slice}_{col_identifier}_{fit_method}_{stat_str}{regrid_str}.csv"
-        for city in list(city_list.keys())
-    ]
+    combos_to_include = (
+        df_main.groupby(["ensemble", "gcm", "ssp"]).count()[plot_col] >= n_min_members
+    )
 
-    if not np.all(
-        [
-            os.path.exists(
-                f"{project_data_path}/extreme_value/cities/{grid_names[grid]}/{file_name}"
-            )
-            for file_name in file_names
-        ]
-    ):
-        # Read all
-        if grid == "original":
-            ds_loca = sau.read_loca(
-                metric_id=metric_id,
-                grid="LOCA2",
-                regrid_method=None,
-                proj_slice=proj_slice,
-                hist_slice=hist_slice,
-                stationary=stationary,
-                fit_method=fit_method,
-                cols_to_keep=cols_to_keep,
-            )
-            ds_star = sau.read_star(
-                metric_id=metric_id,
-                grid="STAR-ESDM",
-                regrid_method=None,
-                proj_slice=proj_slice,
-                hist_slice=hist_slice,
-                stationary=stationary,
-                fit_method=fit_method,
-                cols_to_keep=cols_to_keep,
-            )
-            ds_gard = sau.read_gard(
-                metric_id=metric_id,
-                grid="GARD-LENS",
-                regrid_method=None,
-                proj_slice=proj_slice,
-                hist_slice=hist_slice,
-                stationary=stationary,
-                fit_method=fit_method,
-                cols_to_keep=cols_to_keep,
-            )
-        else:
-            ds_loca, ds_star, ds_gard = sau.read_all(
-                metric_id=metric_id,
-                grid=grid,
-                regrid_method=regrid_method,
-                proj_slice=proj_slice,
-                hist_slice=hist_slice,
-                stationary=stationary,
-                fit_method=fit_method,
-                cols_to_keep=cols_to_keep,
-            )
+    # Scenario uncertainty
+    ssp_uc_by_gcm = (
+        df_main.groupby(["ensemble", "gcm", "ssp"])[plot_col]
+        .mean()
+        .loc[combos_to_include]
+        .groupby(["gcm", "ensemble"])
+        .apply(get_range)
+    )
+    ssp_uc_by_gcm_mean = ssp_uc_by_gcm.replace(0.0, np.nan).mean()
+    ssp_uc_by_gcm_std = ssp_uc_by_gcm.replace(0.0, np.nan).std()
 
-        # Remap lat/lons
-        ds_loca = remap_latlon(ds_loca)
-        ds_star = remap_latlon(ds_star)
-        ds_gard = remap_latlon(ds_gard)
+    ssp_uc = (
+        df_main.groupby(["ensemble", "ssp"])[plot_col]
+        .mean()
+        .groupby("ensemble")
+        .apply(get_range)
+    )
+    ssp_uc_mean = ssp_uc.replace(0.0, np.nan).mean()
+    ssp_uc_std = ssp_uc.replace(0.0, np.nan).std()
 
-        # Loop through cities
-        for city in city_list:
-            # Read
-            lat, lon = city_list[city]
-            df_loca = (
-                ds_loca.sel(lat=lat, lon=lon, method="nearest")
-                .to_dataframe()
-                .dropna()
-                .drop(columns=["lat", "lon"])
-                .reset_index()
-            )
-            df_star = (
-                ds_star.sel(lat=lat, lon=lon, method="nearest")
-                .to_dataframe()
-                .dropna()
-                .drop(columns=["lat", "lon"])
-                .reset_index()
-            )
-            df_gard = (
-                ds_gard.sel(lat=lat, lon=lon, method="nearest")
-                .to_dataframe()
-                .dropna()
-                .drop(columns=["lat", "lon"])
-                .reset_index()
-            )
+    # Response uncertainty
+    gcm_uc = (
+        df_main.groupby(["ensemble", "gcm", "ssp"])[plot_col]
+        .mean()
+        .loc[combos_to_include]
+        .groupby(["ssp", "ensemble"])
+        .apply(get_range)
+    )
+    gcm_uc_mean = gcm_uc.replace(0.0, np.nan).mean()
+    gcm_uc_std = gcm_uc.replace(0.0, np.nan).std()
 
-            # Concat
-            df_all = pd.concat([df_loca, df_star, df_gard])
+    # Internal variability
+    iv_uc = (
+        df_main.groupby(["ensemble", "gcm", "ssp"])[plot_col]
+        .apply(get_range)
+        .loc[combos_to_include]
+    )
+    iv_uc_mean = iv_uc.replace(0.0, np.nan).mean()
+    iv_uc_std = iv_uc.replace(0.0, np.nan).std()
 
-            # Store
-            if grid == "original":
-                regrid_str = ""
-            else:
-                regrid_str = f"_{regrid_method}"
+    # Downscaling uncertainty
+    ds_uc = df_main.groupby(["gcm", "ssp", "member"])[plot_col].apply(get_range)
+    ds_uc_mean = ds_uc.replace(0.0, np.nan).mean()
+    ds_uc_std = ds_uc.replace(0.0, np.nan).std()
 
-            file_name = f"{city}_{metric_id}_{proj_slice}_{hist_slice}_{col_identifier}_{fit_method}_{stat_str}{regrid_str}.csv"
-            df_all.to_csv(
-                f"{project_data_path}/extreme_value/cities/{grid_names[grid]}/{file_name}",
-                index=False,
-            )
+    # GEV uncertainty if included
+    if calculate_gev_uc:
+        gev_uc = get_quantile_range(
+            df=df,
+            groupby_cols=["gcm", "ensemble", "member", "ssp"],
+            plot_col=plot_col,
+        )
+        gev_uc_mean = gev_uc[f"{plot_col}_diff"].mean()
+        gev_uc_std = gev_uc[f"{plot_col}_diff"].std()
+    else:
+        gev_uc_mean = np.nan
+        gev_uc_std = np.nan
+
+    # Return all
+    return pd.DataFrame(
+        {
+            "uncertainty_type": [
+                "ssp_uc",
+                "ssp_uc_by_gcm",
+                "gcm_uc",
+                "iv_uc",
+                "ds_uc",
+                "gev_uc",
+            ],
+            "mean": [
+                ssp_uc_mean,
+                ssp_uc_by_gcm_mean,
+                gcm_uc_mean,
+                iv_uc_mean,
+                ds_uc_mean,
+                gev_uc_mean,
+            ],
+            "std": [
+                ssp_uc_std,
+                ssp_uc_by_gcm_std,
+                gcm_uc_std,
+                iv_uc_std,
+                ds_uc_std,
+                gev_uc_std,
+            ],
+        }
+    )
+
+
+# #################################
+# # Store all city GEV results
+# #################################
+# def remap_latlon(ds):
+#     # Make sure lat/lon is named correctly
+#     if "latitude" in ds.dims and "longitude" in ds.dims:
+#         ds = ds.rename({"latitude": "lat", "longitude": "lon"})
+#     # Set lon to [-180,180] if it is not already in that range
+#     if ds["lon"].max() > 180:
+#         ds["lon"] = ((ds["lon"] + 180) % 360) - 180
+
+#     return ds
+
+
+# def store_all_cities(
+#     metric_id,
+#     grid,
+#     regrid_method,
+#     proj_slice,
+#     hist_slice,
+#     stationary,
+#     fit_method,
+#     cols_to_keep,
+#     col_identifier,
+#     city_list,
+# ):
+#     """
+#     Store all cities GEV results as csv files for a given metric.
+#     """
+#     stat_str = "stat" if stationary else "nonstat"
+#     grid_names = {
+#         "LOCA2": "loca_grid",
+#         "GARD-LENS": "gard_grid",
+#         "original": "original_grid/freq",
+#     }
+#     # Check if done for all cities
+#     if grid == "original":
+#         regrid_str = ""
+#     else:
+#         regrid_str = f"_{regrid_method}"
+
+#     file_names = [
+#         f"{city}_{metric_id}_{proj_slice}_{hist_slice}_{col_identifier}_{fit_method}_{stat_str}{regrid_str}.csv"
+#         for city in list(city_list.keys())
+#     ]
+
+#     if not np.all(
+#         [
+#             os.path.exists(
+#                 f"{project_data_path}/extreme_value/cities/{grid_names[grid]}/{file_name}"
+#             )
+#             for file_name in file_names
+#         ]
+#     ):
+#         # Read all
+#         if grid == "original":
+#             ds_loca = sau.read_loca(
+#                 metric_id=metric_id,
+#                 grid="LOCA2",
+#                 regrid_method=None,
+#                 proj_slice=proj_slice,
+#                 hist_slice=hist_slice,
+#                 stationary=stationary,
+#                 fit_method=fit_method,
+#                 cols_to_keep=cols_to_keep,
+#             )
+#             ds_star = sau.read_star(
+#                 metric_id=metric_id,
+#                 grid="STAR-ESDM",
+#                 regrid_method=None,
+#                 proj_slice=proj_slice,
+#                 hist_slice=hist_slice,
+#                 stationary=stationary,
+#                 fit_method=fit_method,
+#                 cols_to_keep=cols_to_keep,
+#             )
+#             ds_gard = sau.read_gard(
+#                 metric_id=metric_id,
+#                 grid="GARD-LENS",
+#                 regrid_method=None,
+#                 proj_slice=proj_slice,
+#                 hist_slice=hist_slice,
+#                 stationary=stationary,
+#                 fit_method=fit_method,
+#                 cols_to_keep=cols_to_keep,
+#             )
+#         else:
+#             ds_loca, ds_star, ds_gard = sau.read_all(
+#                 metric_id=metric_id,
+#                 grid=grid,
+#                 regrid_method=regrid_method,
+#                 proj_slice=proj_slice,
+#                 hist_slice=hist_slice,
+#                 stationary=stationary,
+#                 fit_method=fit_method,
+#                 cols_to_keep=cols_to_keep,
+#             )
+
+#         # Remap lat/lons
+#         ds_loca = remap_latlon(ds_loca)
+#         ds_star = remap_latlon(ds_star)
+#         ds_gard = remap_latlon(ds_gard)
+
+#         # Loop through cities
+#         for city in city_list:
+#             # Read
+#             lat, lon = city_list[city]
+#             df_loca = (
+#                 ds_loca.sel(lat=lat, lon=lon, method="nearest")
+#                 .to_dataframe()
+#                 .dropna()
+#                 .drop(columns=["lat", "lon"])
+#                 .reset_index()
+#             )
+#             df_star = (
+#                 ds_star.sel(lat=lat, lon=lon, method="nearest")
+#                 .to_dataframe()
+#                 .dropna()
+#                 .drop(columns=["lat", "lon"])
+#                 .reset_index()
+#             )
+#             df_gard = (
+#                 ds_gard.sel(lat=lat, lon=lon, method="nearest")
+#                 .to_dataframe()
+#                 .dropna()
+#                 .drop(columns=["lat", "lon"])
+#                 .reset_index()
+#             )
+
+#             # Concat
+#             df_all = pd.concat([df_loca, df_star, df_gard])
+
+#             # Store
+#             if grid == "original":
+#                 regrid_str = ""
+#             else:
+#                 regrid_str = f"_{regrid_method}"
+
+#             file_name = f"{city}_{metric_id}_{proj_slice}_{hist_slice}_{col_identifier}_{fit_method}_{stat_str}{regrid_str}.csv"
+#             df_all.to_csv(
+#                 f"{project_data_path}/extreme_value/cities/{grid_names[grid]}/{file_name}",
+#                 index=False,
+#             )
+
+# def calculate_df_uc_bayesian(df, plot_col, n_min_members=5):
+#     """
+#     Calculate the uncertainty decomposition based on pd DataFrame.
+#     """
+#     get_range = lambda x: x.max() - x.min()
+
+#     def calculate_quantile_range(df, groupby_cols, plot_col):
+#         df_tmp = pd.merge(
+#             df[df["quantile"] == "q975"].rename(
+#                 columns={plot_col: f"{plot_col}_upper"}
+#             ),
+#             df[df["quantile"] == "p025"].rename(
+#                 columns={plot_col: f"{plot_col}_lower"}
+#             ),
+#             on=groupby_cols,
+#         )
+
+#         df_tmp[f"{plot_col}_diff"] = (
+#             df_tmp[f"{plot_col}_upper"] - df_tmp[f"{plot_col}_lower"]
+#         )
+#         return df_tmp
+
+#     combos_to_include = (
+#         df.groupby(["ensemble", "gcm", "ssp"]).count()[plot_col] >= n_min_members
+#     )
+
+#     # Regular uncertainties with median
+#     df_median = df[df["quantile"] == "main"]
+
+#     # Scenario uncertainty
+#     ssp_uc_by_gcm = (
+#         df_median.groupby(["ensemble", "gcm", "ssp"])[plot_col]
+#         .mean()
+#         .loc[combos_to_include]
+#         .groupby(["gcm", "ensemble"])
+#         .apply(get_range)
+#         .replace(0.0, np.nan)
+#         .mean()
+#     )
+#     ssp_uc = (
+#         df_median.groupby(["ensemble", "ssp"])[plot_col]
+#         .mean()
+#         .groupby("ensemble")
+#         .apply(get_range)
+#         .replace(0.0, np.nan)
+#         .mean()
+#     )
+
+#     # Response uncertainty
+#     gcm_uc = (
+#         df_median.groupby(["ensemble", "gcm", "ssp"])[plot_col]
+#         .mean()
+#         .loc[combos_to_include]
+#         .groupby(["ssp", "ensemble"])
+#         .apply(get_range)
+#         .replace(0.0, np.nan)
+#         .mean()
+#     )
+
+#     # Internal variability
+#     iv_uc = (
+#         df_median.groupby(["ensemble", "gcm", "ssp"])[plot_col]
+#         .apply(get_range)
+#         .loc[combos_to_include]
+#         .replace(0.0, np.nan)
+#         .mean()
+#     )
+
+#     # Downscaling uncertainty
+#     ds_uc = (
+#         df_median.groupby(["gcm", "ssp", "member"])[plot_col]
+#         .apply(get_range)
+#         .replace(0.0, np.nan)
+#         .mean()
+#     )
+
+#     # Fit uncertainty
+#     gev_uc = calculate_quantile_range(
+#         df=df,
+#         groupby_cols=["gcm", "ensemble", "member", "ssp"],
+#         plot_col=plot_col,
+#     )[f"{plot_col}_diff"].mean()
+
+#     # Return all
+#     return pd.DataFrame(
+#         {
+#             "ssp_uc": [ssp_uc],
+#             "ssp_uc_by_gcm": [ssp_uc_by_gcm],
+#             "gcm_uc": [gcm_uc],
+#             "iv_uc": [iv_uc],
+#             "ds_uc": [ds_uc],
+#             "gev_uc": [gev_uc],
+#         }
+#     )

@@ -7,3 +7,4 @@ scripts/logs/
 scripts/old/
 figs/
 .vscode
+*.egg-info/

@@ -1,4 +1,5 @@
 import os
+from functools import partial
 from glob import glob
 
 import dask
@@ -12,11 +13,16 @@ from utils import roar_data_path as project_data_path
 
 
 # Linear regression function
-def linear_regression(X, y):
+def linear_regression(X, y, expected_length=None):
     if not np.isfinite(y).all():
         return np.array([np.nan, np.nan])
-    else:
-        return np.polyfit(X, y, 1)
+
+    # Check length of non-NaNs
+    if expected_length is not None:
+        non_nans = np.count_nonzero(~np.isnan(y))
+        assert non_nans, f"data length is {non_nans}, expected {expected_length}"
+
+    return np.polyfit(X, y, 1)
 
 
 # Fit trend for single output
@@ -51,9 +57,7 @@ def trend_fit_single(
             files = glob(
                 f"{project_data_path}/metrics/LOCA2/{metric_id}_{gcm}_{member}_{ssp}_*.nc"
             )
-            ds = xr.concat(
-                [xr.open_dataset(file) for file in files], dim="time"
-            )
+            ds = xr.concat([xr.open_dataset(file) for file in files], dim="time")
         else:
             ds = xr.open_dataset(
                 f"{project_data_path}/metrics/{ensemble}/{metric_id}_{gcm}_{member}_{ssp}.nc"
@@ -66,24 +70,29 @@ def trend_fit_single(
 
         # Fit trend
         var_id = metric_id.split("_")[1]
+        expected_length = years[1] - years[0] + 1
+
+        linear_regression_func = partial(
+            linear_regression,
+            expected_length=expected_length,
+        )
 
         # Linear trend
         result = xr.apply_ufunc(
-            linear_regression,
-            ds["time"],  # input x data
-            ds[var_id],  # input y data
+            linear_regression_func,
+            ds["time"],
+            ds[var_id],
             input_core_dims=[
                 ["time"],
                 ["time"],
-            ],  # specify core dimensions for inputs
-            output_core_dims=[["coef"]],  # specify core dimensions for output
-            vectorize=True,  # apply function element-wise
-            dask="forbidden",  # enable parallelization with dask
-            output_dtypes=[float],  # specify output data type
+            ],
+            output_core_dims=[["coef"]],
+            vectorize=True,
+            dask="forbidden",
+            output_dtypes=[float],
             dask_gufunc_kwargs={"output_sizes": {"coef": 2}},
         )
-        ds_out = xr.Dataset({metric_id: result})
-        ds_out["coef"] = ["trend", "intcp"]
+        ds_out = xr.Dataset({"intcp": result.sel(coef=1), "slope": result.sel(coef=0)})
 
         ## Store
         # Update GARD GCMs
@@ -112,7 +121,7 @@ def trend_fit_single(
         ds_out.to_netcdf(f"{store_path}/{store_name}")
     # Log if error
     except Exception as e:
-        except_path = f"{project_code_path}/scripts/logs"
+        except_path = f"{project_code_path}/scripts/logs/trend"
         with open(
             f"{except_path}/{ensemble}_{gcm}_{member}_{ssp}_{metric_id}.txt",
             "w",
@@ -137,9 +146,7 @@ def get_unique_loca_metrics(metric_id):
         df = pd.concat(
             [
                 df,
-                pd.DataFrame(
-                    {"gcm": gcm, "member": member, "ssp": ssp}, index=[0]
-                ),
+                pd.DataFrame({"gcm": gcm, "member": member, "ssp": ssp}, index=[0]),
             ]
         )
 
@@ -147,9 +154,7 @@ def get_unique_loca_metrics(metric_id):
     return df.drop_duplicates().reset_index()
 
 
-def trend_fit_all(
-    metric_id, future_years=[2015, 2100], hist_years=[1950, 2014]
-):
+def trend_fit_all(metric_id, future_years=[2015, 2100], hist_years=None):
     """
     Fits a trend to the entire meta-ensemble of outputs.
     """
@@ -166,17 +171,17 @@ def trend_fit_all(
         # Get info
         gcm, member, ssp = row["gcm"], row["member"], row["ssp"]
         years = hist_years if ssp == "historical" else future_years
-
-        out = dask.delayed(trend_fit_single)(
-            ensemble=ensemble,
-            gcm=gcm,
-            member=member,
-            ssp=ssp,
-            metric_id=metric_id,
-            years=years,
-            store_path=store_path,
-        )
-        delayed.append(out)
+        if years is not None:
+            out = dask.delayed(trend_fit_single)(
+                ensemble=ensemble,
+                gcm=gcm,
+                member=member,
+                ssp=ssp,
+                metric_id=metric_id,
+                years=years,
+                store_path=store_path,
+            )
+            delayed.append(out)
 
     #### STAR-ESDM
     ensemble = "STAR-ESDM"
@@ -190,16 +195,17 @@ def trend_fit_all(
         # Fit for historical and ssp
         for ssp_id in ["historical", ssp]:
             years = hist_years if ssp_id == "historical" else future_years
-            out = dask.delayed(trend_fit_single)(
-                ensemble=ensemble,
-                gcm=gcm,
-                member=member,
-                ssp=ssp,
-                metric_id=metric_id,
-                years=years,
-                store_path=store_path,
-            )
-            delayed.append(out)
+            if years is not None:
+                out = dask.delayed(trend_fit_single)(
+                    ensemble=ensemble,
+                    gcm=gcm,
+                    member=member,
+                    ssp=ssp,
+                    metric_id=metric_id,
+                    years=years,
+                    store_path=store_path,
+                )
+                delayed.append(out)
 
     #### GARD-LENS
     ensemble = "GARD-LENS"
@@ -216,16 +222,17 @@ def trend_fit_all(
         # Do for historical and ssp
         for ssp_id in ["historical", ssp]:
             years = hist_years if ssp_id == "historical" else future_years
-            out = dask.delayed(trend_fit_single)(
-                ensemble=ensemble,
-                gcm=gcm,
-                member=member,
-                ssp=ssp,
-                metric_id=metric_id,
-                years=years,
-                store_path=store_path,
-            )
-            delayed.append(out)
+            if years is not None:
+                out = dask.delayed(trend_fit_single)(
+                    ensemble=ensemble,
+                    gcm=gcm,
+                    member=member,
+                    ssp=ssp,
+                    metric_id=metric_id,
+                    years=years,
+                    store_path=store_path,
+                )
+                delayed.append(out)
 
     # Compute all
     _ = dask.compute(*delayed)

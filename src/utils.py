@@ -18,14 +18,14 @@ ssps = ["ssp245", "ssp370", "ssp585"]
 ################
 # Paths
 ################
-roar_code_path = "/storage/home/dcl5300/work/current_projects/conus_comparison_lafferty-etal-2024"
-roar_data_path = "/storage/group/pches/default/users/dcl5300/conus_comparison_lafferty-etal-2024"
-hopper_code_path = (
-    "/home/fs01/dcl257/projects/conus_comparison_lafferty-etal-2024"
+roar_code_path = (
+    "/storage/home/dcl5300/work/current_projects/conus_comparison_lafferty-etal-2024"
 )
-hopper_data_path = (
-    "/home/fs01/dcl257/projects/data/conus_comparison_lafferty-etal-2024"
+roar_data_path = (
+    "/storage/group/pches/default/users/dcl5300/conus_comparison_lafferty-etal-2024"
 )
+hopper_code_path = "/home/fs01/dcl257/projects/conus_comparison_lafferty-etal-2024"
+hopper_data_path = "/home/fs01/dcl257/projects/data/conus_comparison_lafferty-etal-2024"
 
 ################
 # Cities
@@ -57,8 +57,37 @@ loca_gard_mapping = {
 
 
 #################################
-# LOCA members
+# Other
 #################################
+def map_store_names(ensemble, gcm, member):
+    # Update GARD GCMs
+    gcm_name = gcm.replace("canesm5", "CanESM5").replace("ecearth3", "EC-Earth3").replace("cesm2", "CESM2-LENS")
+    
+    # Fix LOCA CESM mapping
+    if ensemble == "LOCA2" and gcm == "CESM2-LENS":
+        member_name = loca_gard_mapping[member] if member in loca_gard_mapping.keys() else member
+    else:
+        member_name = member
+    
+    return gcm_name, member_name
+
+def check_data_length(data, ensemble, gcm, ssp, years):
+    """
+    Check length function
+    """
+    # Check length is as expected
+    if ensemble == "GARD-LENS" and gcm in ["ecearth3", "EC-Earth3"] and ssp == "historical":
+        expected_length = 2014 - 1970 + 1  # GARD-LENS EC-Earth3
+        assert len(data) == expected_length, (
+            f"ds length is {len(data)}, expected {expected_length}"
+        )
+    else:
+        expected_length = years[1] - years[0] + 1
+        assert len(data) == expected_length, (
+            f"ds length is {len(data)}, expected {expected_length}"
+        )
+    return expected_length
+        
 def get_unique_loca_metrics(metric_id, project_data_path=roar_data_path):
     """
     Return unique LOCA2 combinations for given metric_id.
@@ -73,9 +102,7 @@ def get_unique_loca_metrics(metric_id, project_data_path=roar_data_path):
         df = pd.concat(
             [
                 df,
-                pd.DataFrame(
-                    {"gcm": gcm, "member": member, "ssp": ssp}, index=[0]
-                ),
+                pd.DataFrame({"gcm": gcm, "member": member, "ssp": ssp}, index=[0]),
             ]
         )
 
