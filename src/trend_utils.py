@@ -7,20 +7,22 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from utils import loca_gard_mapping
+from utils import check_data_length, loca_gard_mapping
 from utils import roar_code_path as project_code_path
 from utils import roar_data_path as project_data_path
 
 
 # Linear regression function
 def linear_regression(X, y, expected_length=None):
-    if not np.isfinite(y).all():
+    if np.isnan(y).all():
         return np.array([np.nan, np.nan])
 
     # Check length of non-NaNs
     if expected_length is not None:
         non_nans = np.count_nonzero(~np.isnan(y))
-        assert non_nans, f"data length is {non_nans}, expected {expected_length}"
+        assert non_nans == expected_length, (
+            f"data length is {non_nans}, expected {expected_length}"
+        )
 
     return np.polyfit(X, y, 1)
 
@@ -67,6 +69,9 @@ def trend_fit_single(
         ds["time"] = ds["time"].dt.year
         if years is not None:
             ds = ds.sel(time=slice(years[0], years[1]))
+
+        # Check length is as expected
+        expected_length = check_data_length(ds["time"], ensemble, gcm, ssp_name, years)
 
         # Fit trend
         var_id = metric_id.split("_")[1]
@@ -118,6 +123,13 @@ def trend_fit_single(
                 "ensemble": [ensemble],
             }
         )
+        # Make sure not all NaNs
+        assert np.count_nonzero(~np.isnan(ds_out["slope"])), "all NaNs in fit"
+        # Make sure not all same (happened with a couple for some reason)
+        assert np.all(ds_out["slope"] != ds_out["slope"].to_numpy()[0, 0]), (
+            "all same in fit"
+        )
+        # Store
         ds_out.to_netcdf(f"{store_path}/{store_name}")
     # Log if error
     except Exception as e:
@@ -159,7 +171,7 @@ def trend_fit_all(metric_id, future_years=[2015, 2100], hist_years=None):
     Fits a trend to the entire meta-ensemble of outputs.
     """
     # Store results location
-    store_path = f"{project_data_path}/trends/original_grids/{metric_id}"
+    store_path = f"{project_data_path}/trends/original_grid/{metric_id}"
 
     #### LOCA2
     ensemble = "LOCA2"
@@ -236,3 +248,66 @@ def trend_fit_all(metric_id, future_years=[2015, 2100], hist_years=None):
 
     # Compute all
     _ = dask.compute(*delayed)
+
+
+#########################
+# Fit trend to city
+#########################
+def trend_fit_city(metric_id, city, years=[2015, 2100]):
+    """
+    Fits a trend to the entire meta-ensemble of outputs.
+    """
+    # Store results location
+    store_path = f"{project_data_path}/trends/cities/original_grid/"
+
+    # Check if done
+    year_str = f"{years[0]}-{years[1]}"
+    if os.path.exists(f"{store_path}/{city}_{metric_id}_{year_str}.csv"):
+        return None
+
+    # Read city data
+    df = pd.read_csv(f"{project_data_path}/metrics/cities/{city}_{metric_id}.csv")
+    var_id = metric_id.split("_")[1]
+
+    # Select time period
+    df = df[df["time"].isin(range(years[0], years[1] + 1))]
+
+    # Apply over all groups
+    groups = df.groupby(["gcm", "member", "ssp", "ensemble"])
+
+    # Loop through
+    results = []
+
+    for name, group in groups:
+        # Sort by time for regression
+        group = group.sort_values("time")
+
+        # Get X and y
+        X = group["time"].values
+        y = group[var_id].values
+
+        # Skip TaiESM1 from STAR (too hot!)
+        if name[3] == "STAR-ESDM" and name[0] == "TaiESM1":
+            continue
+
+        # Apply linear regression
+        try:
+            slope, intercept = linear_regression(X, y)
+            results.append(
+                {
+                    "gcm": name[0],
+                    "member": name[1],
+                    "ssp": name[2],
+                    "ensemble": name[3],
+                    "slope": slope,
+                    "intercept": intercept,
+                }
+            )
+        except Exception as e:
+            print(f"Error in group {name}: {e}")
+
+    # Convert results to DataFrame
+    results_df = pd.DataFrame(results)
+
+    # Store
+    results_df.to_csv(f"{store_path}/{city}_{metric_id}_{year_str}.csv", index=False)

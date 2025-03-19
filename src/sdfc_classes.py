@@ -272,9 +272,7 @@ class MLTensor(MultivariateLink):  ##{{{
     def jacobian(self, coef, X):  ##{{{
         list_jac = []
         ib, ie = 0, 0
-        jac = np.zeros(
-            (np.nonzero(self._s_p)[0].size, self.n_samples, self.n_features)
-        )
+        jac = np.zeros((np.nonzero(self._s_p)[0].size, self.n_samples, self.n_features))
         i = 0
         for s, l, x in zip(self._s_p, self._l_p, X):
             if s > 0:
@@ -329,10 +327,7 @@ class RHS:
 
         ## If global covariate and link functions are defined, just set it
         ##================================================================
-        if (
-            kwargs.get("c_global") is not None
-            or kwargs.get("l_global") is not None
-        ):
+        if kwargs.get("c_global") is not None or kwargs.get("l_global") is not None:
             self.c_global = kwargs.get("c_global")
             self.l_global = kwargs.get(
                 "l_global",
@@ -730,9 +725,7 @@ class AbstractLaw:
         self._rhs.build(**kwargs)
 
         if self._rhs.n_features == 0:
-            raise ValueError(
-                "All parameters are fixed (n_features == 0), no fit"
-            )
+            raise ValueError("All parameters are fixed (n_features == 0), no fit")
 
         self.coef_ = np.zeros(self._rhs.n_features)
         ## Now fit
@@ -783,13 +776,13 @@ class AbstractLaw:
             else:
                 for lhs in self._lhs.names:
                     if kwargs.get("c_{}".format(lhs)) is not None:
-                        kwargs_bs["c_{}".format(lhs)] = atleast2d(
-                            kwargs[f"c_{lhs}"]
-                        )[idx, :]
+                        kwargs_bs["c_{}".format(lhs)] = atleast2d(kwargs[f"c_{lhs}"])[
+                            idx, :
+                        ]
                     if kwargs.get("f_{}".format(lhs)) is not None:
-                        kwargs_bs["f_{}".format(lhs)] = atleast2d(
-                            kwargs[f"f_{lhs}"]
-                        )[idx, :]
+                        kwargs_bs["f_{}".format(lhs)] = atleast2d(kwargs[f"f_{lhs}"])[
+                            idx, :
+                        ]
 
             if len(coefs_bs) > 0:
                 kwargs_bs["init"] = coefs_bs[0]
@@ -870,17 +863,13 @@ class GEV(AbstractLaw):
 
     @property
     def upper_bound(self):  ##{{{
-        return np.where(
-            self.shape < 0, self.loc - self.scale / self.shape, np.inf
-        )
+        return np.where(self.shape < 0, self.loc - self.scale / self.shape, np.inf)
 
     ##}}}
 
     @property
     def lower_bound(self):  ##{{{
-        return np.where(
-            self.shape < 0, -np.inf, self.loc - self.scale / self.shape
-        )
+        return np.where(self.shape < 0, -np.inf, self.loc - self.scale / self.shape)
 
     ##}}}
 
@@ -1151,9 +1140,7 @@ class GEV(AbstractLaw):
             return np.inf
 
         res = np.sum(
-            (1.0 + 1.0 / shape) * np.log(Z)
-            + np.power(Z, -1.0 / shape)
-            + np.log(scale)
+            (1.0 + 1.0 / shape) * np.log(Z) + np.power(Z, -1.0 / shape) + np.log(scale)
         )
 
         return res if np.isfinite(res) else np.inf
@@ -1318,11 +1305,7 @@ def lmoments(Y, c_Y=None, order=None, lq=np.arange(0.05, 0.96, 0.01)):  ##{{{
     The lmoments.
     """
 
-    order = (
-        order
-        if order is None
-        else np.array([order], dtype=np.int).squeeze() - 1
-    )
+    order = order if order is None else np.array([order], dtype=np.int).squeeze() - 1
 
     if c_Y is None:
         lmom = _lmoments_stationary(Y)

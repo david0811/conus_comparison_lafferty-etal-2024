@@ -22,7 +22,12 @@ def samlmom3_numpy(sample):
     sample = np.sort(sample.reshape(n))[::-1]
     b0 = np.mean(sample)
     b1 = np.array([(n - j - 1) * sample[j] / n / (n - 1) for j in range(n)]).sum()
-    b2 = np.array([(n - j - 1) * (n - j - 2) * sample[j] / n / (n - 1) / (n - 2) for j in range(n - 1)]).sum()
+    b2 = np.array(
+        [
+            (n - j - 1) * (n - j - 2) * sample[j] / n / (n - 1) / (n - 2)
+            for j in range(n - 1)
+        ]
+    ).sum()
     lmom1 = b0
     lmom2 = 2 * b1 - b0
     lmom3 = 6 * (b2 - b1) + b0
@@ -67,7 +72,9 @@ def pargev_numpy(lmom):
         raise ValueError("Invalid L-Moments")
 
     if T3 <= 0:
-        G = (A0 + T3 * (A1 + T3 * (A2 + T3 * (A3 + T3 * A4)))) / (1 + T3 * (B1 + T3 * (B2 + T3 * B3)))
+        G = (A0 + T3 * (A1 + T3 * (A2 + T3 * (A3 + T3 * A4)))) / (
+            1 + T3 * (B1 + T3 * (B2 + T3 * B3))
+        )
 
         if T3 >= -0.8:
             para3 = G
@@ -191,7 +198,9 @@ def pargev_numba(lmom):
     para3 = 0.0
 
     if t3 <= 0:
-        G = (A0 + t3 * (A1 + t3 * (A2 + t3 * (A3 + t3 * A4)))) / (1 + t3 * (B1 + t3 * (B2 + t3 * B3)))
+        G = (A0 + t3 * (A1 + t3 * (A2 + t3 * (A3 + t3 * A4)))) / (
+            1 + t3 * (B1 + t3 * (B2 + t3 * B3))
+        )
         if t3 >= -0.8:
             para3 = G
             GAM = math.exp(math.lgamma(1 + G))
@@ -279,7 +288,9 @@ def samlmom3_bootstrap_numba(data_array, bootstrap_dim=0):
     for j in range(time):
         weights_b1[j] = (time - j - 1) / (time * (time - 1))
         if j < time - 1:
-            weights_b2[j] = (time - j - 1) * (time - j - 2) / (time * (time - 1) * (time - 2))
+            weights_b2[j] = (
+                (time - j - 1) * (time - j - 2) / (time * (time - 1) * (time - 2))
+            )
 
     # Process each bootstrap sample
     for b in range(n_bootstrap):
@@ -362,7 +373,9 @@ def calculate_gev_params(lmom):
     # Process based on T3 value
     if T3 <= 0:
         # Compute initial estimate of shape parameter
-        G = (A0 + T3 * (A1 + T3 * (A2 + T3 * (A3 + T3 * A4)))) / (1 + T3 * (B1 + T3 * (B2 + T3 * B3)))
+        G = (A0 + T3 * (A1 + T3 * (A2 + T3 * (A3 + T3 * A4)))) / (
+            1 + T3 * (B1 + T3 * (B2 + T3 * B3))
+        )
 
         if T3 >= -0.8:
             para3 = G

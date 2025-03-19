@@ -92,9 +92,7 @@ thresh_c = f_to_c(65.0)
 # CDD
 def calculate_cdd(tasmin, tasmax, b):
     # Calculate t_bar only for the valid range where tasmin < b < tasmax
-    t_bar = np.arccos(
-        np.clip((2 * b - tasmax - tasmin) / (tasmax - tasmin), -1, 1)
-    )
+    t_bar = np.arccos(np.clip((2 * b - tasmax - tasmin) / (tasmax - tasmin), -1, 1))
 
     # CDD formula components
     cdd_thresh_below = (tasmax + tasmin) / 2.0 - b
@@ -112,17 +110,13 @@ def calculate_cdd(tasmin, tasmax, b):
 
 # ufunc for dask
 def cdd_ufunc(tasmin, tasmax, threshold=thresh_c):
-    return xr.apply_ufunc(
-        calculate_cdd, tasmin, tasmax, threshold, dask="allowed"
-    )
+    return xr.apply_ufunc(calculate_cdd, tasmin, tasmax, threshold, dask="allowed")
 
 
 # HDD
 def calculate_hdd(tasmin, tasmax, b):
     # Calculate t_bar only for the valid range where tasmin < b < tasmax
-    t_bar = np.arccos(
-        np.clip((2 * b - tasmax - tasmin) / (tasmax - tasmin), -1, 1)
-    )
+    t_bar = np.arccos(np.clip((2 * b - tasmax - tasmin) / (tasmax - tasmin), -1, 1))
 
     # HDD formula components
     hdd_thresh_below = 0.0
@@ -140,9 +134,7 @@ def calculate_hdd(tasmin, tasmax, b):
 
 # ufunc for dask
 def hdd_ufunc(tasmin, tasmax, threshold=thresh_c):
-    return xr.apply_ufunc(
-        calculate_hdd, tasmin, tasmax, threshold, dask="allowed"
-    )
+    return xr.apply_ufunc(calculate_hdd, tasmin, tasmax, threshold, dask="allowed")
 
 
 # Degree days
@@ -152,18 +144,10 @@ def calculate_dd_sum(ds_in, var_id):
 
     # CDD
     if var_id == "cdd":
-        ds_out = (
-            cdd_ufunc(ds_in["tasmin"], ds_in["tasmax"])
-            .resample(time="YE")
-            .sum()
-        )
+        ds_out = cdd_ufunc(ds_in["tasmin"], ds_in["tasmax"]).resample(time="YE").sum()
     # HDD
     elif var_id == "hdd":
-        ds_out = (
-            hdd_ufunc(ds_in["tasmin"], ds_in["tasmax"])
-            .resample(time="YE")
-            .sum()
-        )
+        ds_out = hdd_ufunc(ds_in["tasmin"], ds_in["tasmax"]).resample(time="YE").sum()
 
     return xr.Dataset({var_id: ds_out})
 
@@ -174,17 +158,9 @@ def calculate_dd_max(ds_in, var_id):
 
     # CDD
     if var_id == "cdd":
-        ds_out = (
-            cdd_ufunc(ds_in["tasmin"], ds_in["tasmax"])
-            .resample(time="YE")
-            .max()
-        )
+        ds_out = cdd_ufunc(ds_in["tasmin"], ds_in["tasmax"]).resample(time="YE").max()
     # HDD
     elif var_id == "hdd":
-        ds_out = (
-            hdd_ufunc(ds_in["tasmin"], ds_in["tasmax"])
-            .resample(time="YE")
-            .max()
-        )
+        ds_out = hdd_ufunc(ds_in["tasmin"], ds_in["tasmax"]).resample(time="YE").max()
 
     return xr.Dataset({var_id: ds_out})

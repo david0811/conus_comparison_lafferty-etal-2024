@@ -34,13 +34,13 @@ def read_loca(
     boot_name = "bootstrap" if bootstrap else "main"
     if analysis_type == "extreme_value":
         if bootstrap:
-            file_info = (
-                f"{proj_slice}_{hist_slice}_{stat_name}_{fit_method}_{boot_name}{loca_regrid_str}"
-            )
+            file_info = f"{proj_slice}_{hist_slice}_{stat_name}_{fit_method}_{boot_name}{loca_regrid_str}"
         else:
-            file_info = f"{proj_slice}_{stat_name}_{fit_method}_{boot_name}{loca_regrid_str}"
+            file_info = (
+                f"{proj_slice}_{stat_name}_{fit_method}_{boot_name}{loca_regrid_str}"
+            )
     elif analysis_type == "trends":
-        file_info = loca_regrid_str
+        file_info = f"{proj_slice}{loca_regrid_str}"
 
     # Read all
     loca_ssp245_files = glob(
@@ -70,7 +70,9 @@ def read_loca(
 
     if hist_slice is not None:
         if not bootstrap:
-            file_info = f"{hist_slice}_{stat_name}_{fit_method}_{boot_name}{loca_regrid_str}"
+            file_info = (
+                f"{hist_slice}_{stat_name}_{fit_method}_{boot_name}{loca_regrid_str}"
+            )
             loca_hist_files = glob(
                 f"{project_data_path}/{analysis_type}/{loca_grid_str}/{metric_id}/LOCA2_*_{file_info}.nc"
             )
@@ -113,16 +115,15 @@ def read_star(
     boot_name = "bootstrap" if bootstrap else "main"
     if analysis_type == "extreme_value":
         if bootstrap:
-            file_info = (
-                f"{proj_slice}_{hist_slice}_{stat_name}_{fit_method}_{boot_name}{star_regrid_str}"
-            )
+            file_info = f"{proj_slice}_{hist_slice}_{stat_name}_{fit_method}_{boot_name}{star_regrid_str}"
         else:
-            file_info = f"{proj_slice}_{stat_name}_{fit_method}_{boot_name}{star_regrid_str}"
+            file_info = (
+                f"{proj_slice}_{stat_name}_{fit_method}_{boot_name}{star_regrid_str}"
+            )
     elif analysis_type == "trends":
-        file_info = star_regrid_str
+        file_info = f"{proj_slice}{star_regrid_str}"
 
     # Read all files
-    print(f"{project_data_path}/{analysis_type}/{star_grid_str}/{metric_id}/STAR-ESDM_*_{file_info}.nc")
     star_proj_files = glob(
         f"{project_data_path}/{analysis_type}/{star_grid_str}/{metric_id}/STAR-ESDM_*_{file_info}.nc"
     )
@@ -133,7 +134,9 @@ def read_star(
     # Read historical if desired
     if hist_slice is not None:
         if not bootstrap:
-            file_info = f"{hist_slice}_{stat_name}_{fit_method}_{boot_name}{star_regrid_str}"
+            file_info = (
+                f"{hist_slice}_{stat_name}_{fit_method}_{boot_name}{star_regrid_str}"
+            )
             star_hist_files = glob(
                 f"{project_data_path}/{analysis_type}/{star_grid_str}/{metric_id}/STAR-ESDM_*_{file_info}.nc"
             )
@@ -176,13 +179,13 @@ def read_gard(
     boot_name = "bootstrap" if bootstrap else "main"
     if analysis_type == "extreme_value":
         if bootstrap:
-            file_info = (
-                f"{proj_slice}_{hist_slice}_{stat_name}_{fit_method}_{boot_name}{gard_regrid_str}"
-            )
+            file_info = f"{proj_slice}_{hist_slice}_{stat_name}_{fit_method}_{boot_name}{gard_regrid_str}"
         else:
-            file_info = f"{proj_slice}_{stat_name}_{fit_method}_{boot_name}{gard_regrid_str}"
+            file_info = (
+                f"{proj_slice}_{stat_name}_{fit_method}_{boot_name}{gard_regrid_str}"
+            )
     elif analysis_type == "trends":
-        file_info = gard_regrid_str
+        file_info = f"{proj_slice}{gard_regrid_str}"
 
     # Read all files
     gard_proj_files = glob(
@@ -195,7 +198,9 @@ def read_gard(
     # Get hist if desired (only for main as boot already contains)
     if hist_slice is not None:
         if not bootstrap:
-            file_info = f"{hist_slice}_{stat_name}_{fit_method}_{boot_name}{gard_regrid_str}"
+            file_info = (
+                f"{hist_slice}_{stat_name}_{fit_method}_{boot_name}{gard_regrid_str}"
+            )
             gard_hist_files = glob(
                 f"{project_data_path}/{analysis_type}/{gard_grid_str}/{metric_id}/GARD-LENS_*_{file_info}.nc"
             )
@@ -286,7 +291,10 @@ def compute_gcm_uc(ds_loca, ds_gard, ds_star, var_name, min_members=5):
     # range is computed across only 1 ensemble, so we filter any below
     # the maximum count
     gcm_uc = xr.concat([gard_gcm_range, star_gcm_range, loca_gcm_range], dim="ensemble")
-    uq_maxs = gcm_uc.count(dim=["ensemble", "ssp"]) == gcm_uc.count(dim=["ensemble", "ssp"]).max()
+    uq_maxs = (
+        gcm_uc.count(dim=["ensemble", "ssp"])
+        == gcm_uc.count(dim=["ensemble", "ssp"]).max()
+    )
     gcm_uc = gcm_uc.where(uq_maxs).mean(dim=["ensemble", "ssp"])
 
     return gcm_uc
@@ -358,14 +366,8 @@ def compute_iv_uc(ds_loca, ds_gard, ds_star, var_name, min_members=5):
     gard_iv_range = ensemble_iv_range(ds_gard, min_members, var_name)
 
     # Combine and average over ensembles
-    # Again filter due to regridding issues -- here there are some gridpoints where
-    # I think the GEV fitting is running into invalid L-moments, so I use a less strict
-    # filter
+    # Again filter due to regridding issues
     iv_uc = xr.concat([gard_iv_range, star_iv_range, loca_iv_range], dim="ensemble")
-    # uq_maxs = (
-    #     iv_uc.count(dim=["ensemble", "gcm", "ssp"])
-    #     >= iv_uc.count(dim=["ensemble", "gcm", "ssp"]).max() - 1.0
-    # )
     uq_maxs = (
         iv_uc.count(dim=["ensemble", "gcm", "ssp"])
         == iv_uc.count(dim=["ensemble", "gcm", "ssp"]).max()
@@ -417,9 +419,15 @@ def compute_dsc_uc(ds_loca, ds_gard, ds_star, var_name):
     # Combine all
     ds_combined = xr.merge(
         [
-            xr.combine_by_coords([ds, ds_star], join="left", combine_attrs="drop_conflicts"),
-            xr.combine_by_coords([ds, ds_gard], join="left", combine_attrs="drop_conflicts"),
-            xr.combine_by_coords([ds, ds_loca], join="left", combine_attrs="drop_conflicts"),
+            xr.combine_by_coords(
+                [ds, ds_star], join="left", combine_attrs="drop_conflicts"
+            ),
+            xr.combine_by_coords(
+                [ds, ds_gard], join="left", combine_attrs="drop_conflicts"
+            ),
+            xr.combine_by_coords(
+                [ds, ds_loca], join="left", combine_attrs="drop_conflicts"
+            ),
         ],
         combine_attrs="drop_conflicts",
     )
@@ -461,13 +469,19 @@ def compute_gev_uc(ds_loca, ds_gard, ds_star, time_sel, var_name):
     star_count = star_gev_range.count(dim=["gcm", "member", "ssp"])
     gard_count = gard_gev_range.count(dim=["gcm", "member", "ssp"])
     total_count = (
-        star_count.isel(ensemble=0) + loca_count.isel(ensemble=0) + gard_count.isel(ensemble=0)
+        star_count.isel(ensemble=0)
+        + loca_count.isel(ensemble=0)
+        + gard_count.isel(ensemble=0)
     )
 
     loca_sum = loca_gev_range.sum(dim=["gcm", "member", "ssp"])
     star_sum = star_gev_range.sum(dim=["gcm", "member", "ssp"])
     gard_sum = gard_gev_range.sum(dim=["gcm", "member", "ssp"])
-    total_sum = star_sum.isel(ensemble=0) + loca_sum.isel(ensemble=0) + gard_sum.isel(ensemble=0)
+    total_sum = (
+        star_sum.isel(ensemble=0)
+        + loca_sum.isel(ensemble=0)
+        + gard_sum.isel(ensemble=0)
+    )
 
     # Again filter due to regridding issues
     gev_uc = (total_sum / total_count).where(total_count == total_count.max())
@@ -475,7 +489,28 @@ def compute_gev_uc(ds_loca, ds_gard, ds_star, time_sel, var_name):
     return gev_uc
 
 
-def compute_tot_uc(ds_loca, ds_gard, ds_star, time_sel, var_name):
+def compute_tot_uc_main(ds_loca, ds_gard, ds_star, var_name):
+    """
+    Computes total uncertainty (full range).
+    Need to do via stacking a new dimension since we can't merge all.
+    """
+    # Stack along new dimension
+    ds_stacked = xr.concat(
+        [
+            ds_loca[var_name].stack(z=("ensemble", "gcm", "ssp", "member")),
+            ds_star[var_name].stack(z=("ensemble", "gcm", "ssp", "member")),
+            ds_gard[var_name].stack(z=("ensemble", "gcm", "ssp", "member")),
+        ],
+        dim="z",
+    )
+
+    # Measures of uncertainty
+    uc_99w = ds_stacked.quantile(0.995, dim="z") - ds_stacked.quantile(0.005, dim="z")
+
+    return uc_99w
+
+
+def compute_tot_uc_bootstrap(ds_loca, ds_gard, ds_star, time_sel, var_name):
     """
     Computes total uncertainty (full range).
     Need to do via stacking a new dimension since we can't merge all.
@@ -512,7 +547,7 @@ def compute_tot_uc(ds_loca, ds_gard, ds_star, time_sel, var_name):
     )
 
     # Measures of uncertainty
-    uc_99w = ds_upper.quantile(0.995, dim='z') - ds_lower.quantile(0.005, dim='z')
+    uc_99w = ds_upper.quantile(0.995, dim="z") - ds_lower.quantile(0.005, dim="z")
 
     return uc_99w
 
@@ -565,46 +600,19 @@ def uc_all(
     # Compute downscaling uncertainty
     dsc_uc = compute_dsc_uc(ds_loca, ds_gard, ds_star, col_name)
 
-    del ds_loca, ds_star, ds_gard # memory management
-
-    # Read all: bootstrap
-    ds_loca, ds_star, ds_gard = read_all(
-        metric_id=metric_id,
-        grid=grid,
-        regrid_method=regrid_method,
-        proj_slice=proj_slice,
-        hist_slice="1950-2014",
-        stationary=stationary,
-        fit_method=fit_method,
-        bootstrap=True,
-        cols_to_keep=[col_name],
-        analysis_type=analysis_type,
-    )
-
-    # Compute change if desired
-    if bool(hist_slice and proj_slice):
-        time_sel = "diff"
-    elif hist_slice is None:
-        time_sel = "proj"
-    elif proj_slice is None:
-        time_sel = "hist"
-
-    # Compute GEV uncertainty
-    gev_uc = compute_gev_uc(ds_loca, ds_gard, ds_star, time_sel, col_name)
-
     # Compute total uncertainty
-    uc_99w = compute_tot_uc(ds_loca, ds_gard, ds_star, time_sel, col_name)
+    if analysis_type == "trends":
+        uc_99w = compute_tot_uc_main(ds_loca, ds_gard, ds_star, col_name)
+        uc_99w = uc_99w.rename("uc_99w")
 
-    # Merge and return
+    del ds_loca, ds_star, ds_gard  # memory management
+
+    # Merge
     ssp_uc = ssp_uc.rename("ssp_uc")
     ssp_uc_by_gcm = ssp_uc_by_gcm.rename("ssp_uc_by_gcm")
     gcm_uc = gcm_uc.rename("gcm_uc")
     iv_uc = iv_uc.rename("iv_uc")
     dsc_uc = dsc_uc.rename("dsc_uc")
-    gev_uc = gev_uc.rename("gev_uc")
-    # uc_range = uc_range.rename("uc_range")
-    # uc_95w = uc_95w.rename("uc_95w")
-    uc_99w = uc_99w.rename("uc_99w")
 
     uc = xr.merge(
         [
@@ -613,12 +621,47 @@ def uc_all(
             gcm_uc,
             iv_uc,
             dsc_uc,
-            gev_uc,
-            # uc_range,
-            # uc_95w,
-            uc_99w,
         ]
     )
+
+    # Merge again
+    if analysis_type == "trends":
+        uc = xr.merge([uc, uc_99w])
+
+    # Additional GEV uncertainty
+    if analysis_type == "extreme_value":
+        # Read all: bootstrap
+        ds_loca, ds_star, ds_gard = read_all(
+            metric_id=metric_id,
+            grid=grid,
+            regrid_method=regrid_method,
+            proj_slice=proj_slice,
+            hist_slice="1950-2014",
+            stationary=stationary,
+            fit_method=fit_method,
+            bootstrap=True,
+            cols_to_keep=[col_name],
+            analysis_type=analysis_type,
+        )
+
+        # Compute change if desired
+        if bool(hist_slice and proj_slice):
+            time_sel = "diff"
+        elif hist_slice is None:
+            time_sel = "proj"
+        elif proj_slice is None:
+            time_sel = "hist"
+
+        # Compute GEV uncertainty
+        gev_uc = compute_gev_uc(ds_loca, ds_gard, ds_star, time_sel, col_name)
+        gev_uc = gev_uc.rename("gev_uc")
+
+        # Compute total uncertainty
+        uc_99w = compute_tot_uc_bootstrap(ds_loca, ds_gard, ds_star, time_sel, col_name)
+        uc_99w = uc_99w.rename("uc_99w")
+
+        # Merge
+        uc = xr.merge([uc, gev_uc, uc_99w])
 
     if return_metric:
         return uc, ds_loca, ds_star, ds_gard

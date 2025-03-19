@@ -10,14 +10,14 @@ from scipy.stats import genextreme as gev
 
 import sdfc_classes as sd
 from lmom_utils import (
+    pargev_bootstrap_numba,
     pargev_numba,
     pargev_numpy,
+    samlmom3_bootstrap_numba,
     samlmom3_numba,
     samlmom3_numpy,
-    samlmom3_bootstrap_numba,
-    pargev_bootstrap_numba,
 )
-from utils import get_unique_loca_metrics, check_data_length, map_store_names
+from utils import check_data_length, get_unique_loca_metrics, map_store_names
 from utils import roar_code_path as project_code_path
 from utils import roar_data_path as project_data_path
 
@@ -123,7 +123,9 @@ def _fit_gev_1d_stationary(
     # Check length of non-NaNs
     if expected_length is not None:
         non_nans = np.count_nonzero(~np.isnan(data))
-        assert non_nans == expected_length, f"data length is {non_nans}, expected {expected_length}"
+        assert non_nans == expected_length, (
+            f"data length is {non_nans}, expected {expected_length}"
+        )
 
     # Some GARD-LENS outputs have all values zero
     if (data == 0.0).all():
@@ -211,13 +213,15 @@ def _fit_gev_1d_nonstationary(data, years, fit_method="mle"):
     of negating the shape parameter relative to other sources.
     """
 
-    # Check if all finite
-    if not np.isfinite(data).all():
+    # Return NaN if all Nans
+    if np.isnan(data).all():
         return (np.nan, np.nan, np.nan, np.nan)
 
     # Check length
     expected_length = years[1] - years[0] + 1
-    assert len(data) == expected_length, f"data length is {len(data)}, expected {expected_length}"
+    assert len(data) == expected_length, (
+        f"data length is {len(data)}, expected {expected_length}"
+    )
 
     # Fit
     if fit_method == "mle":
@@ -258,9 +262,15 @@ def _gev_parametric_bootstrap_1d_nonstationary(
     loc_intcp, loc_trend, scale, shape = params
 
     params_out = np.zeros((n_boot, 4))
-    return_levels_out = np.zeros((n_boot, len(periods_for_level) * len(return_period_years)))
-    return_level_diffs_out = np.zeros((n_boot, len(periods_for_level) * len(return_period_diffs)))
-    return_level_chfcs_out = np.zeros((n_boot, len(periods_for_level) * len(return_period_diffs)))
+    return_levels_out = np.zeros(
+        (n_boot, len(periods_for_level) * len(return_period_years))
+    )
+    return_level_diffs_out = np.zeros(
+        (n_boot, len(periods_for_level) * len(return_period_diffs))
+    )
+    return_level_chfcs_out = np.zeros(
+        (n_boot, len(periods_for_level) * len(return_period_diffs))
+    )
 
     # Bootstrap sampling
     boot_sample = gev.rvs(
@@ -271,7 +281,9 @@ def _gev_parametric_bootstrap_1d_nonstationary(
     )
     for i in range(n_boot):
         # Do the fit
-        params_out[i, :] = _fit_gev_1d_nonstationary(boot_sample[i], years, fit_method=fit_method)
+        params_out[i, :] = _fit_gev_1d_nonstationary(
+            boot_sample[i], years, fit_method=fit_method
+        )
         # Return levels
         loc_intcp_tmp, loc_trend_tmp, scale_tmp, shape_tmp = params_out[i, :]
         return_levels_out[i, :] = [
@@ -292,8 +304,7 @@ def _gev_parametric_bootstrap_1d_nonstationary(
                 scale_tmp,
                 shape_tmp,
             )
-            - 
-            estimate_return_level(
+            - estimate_return_level(
                 period,
                 loc_intcp_tmp + loc_trend_tmp * (return_period_diff[0] - years[0]),
                 scale_tmp,
@@ -309,8 +320,8 @@ def _gev_parametric_bootstrap_1d_nonstationary(
                 loc_intcp_tmp + loc_trend_tmp * (return_period_diff[1] - years[0]),
                 scale_tmp,
                 shape_tmp,
-            ) / 
-            estimate_return_level(
+            )
+            / estimate_return_level(
                 period,
                 loc_intcp_tmp + loc_trend_tmp * (return_period_diff[0] - years[0]),
                 scale_tmp,
@@ -322,14 +333,19 @@ def _gev_parametric_bootstrap_1d_nonstationary(
 
     # Return samples or 95% intervals
     if return_samples:
-        return params_out, return_levels_out, return_level_diffs_out, return_level_chfcs_out
+        return (
+            params_out,
+            return_levels_out,
+            return_level_diffs_out,
+            return_level_chfcs_out,
+        )
     else:
         return (
             np.nanpercentile(params_out, [2.5, 97.5], axis=0),
             np.nanpercentile(return_levels_out, [2.5, 97.5], axis=0),
             np.nanpercentile(return_level_diffs_out, [2.5, 97.5], axis=0),
             np.nanpercentile(return_level_chfcs_out, [2.5, 97.5], axis=0),
-        )   
+        )
 
 
 def fit_gev_xr(
@@ -408,7 +424,9 @@ def fit_gev_xr(
     # Return level calculations (for set periods)
     if periods_for_level is not None:
         for period in periods_for_level:
-            ds_out = xr_estimate_return_level(period, ds_out, scalar, return_params=True)
+            ds_out = xr_estimate_return_level(
+                period, ds_out, scalar, return_params=True
+            )
 
     # Return period calculations (for set levels)
     if levels_for_period is not None:
@@ -445,11 +463,11 @@ def fit_gev_xr_bootstrap(
         ssp_name = ssp
     time_name = f"{years[0]}-{years[1]}" if years is not None else "all"
     stat_name = "stat" if stationary else "nonstat"
-    store_name = (
-        f"{ensemble}_{gcm}_{member}_{ssp_name}_{time_name}_{stat_name}_{fit_method}_main.nc"
-    )
+    store_name = f"{ensemble}_{gcm}_{member}_{ssp_name}_{time_name}_{stat_name}_{fit_method}_main.nc"
 
-    assert os.path.exists(f"{store_path}/{store_name}"), f"main fit {store_path}/{store_name} not found"
+    assert os.path.exists(f"{store_path}/{store_name}"), (
+        f"main fit {store_path}/{store_name} not found"
+    )
     ds_fit_main = xr.open_dataset(f"{store_path}/{store_name}")
 
     # Generate bootstrap sample (careful memory requirements!)
@@ -466,7 +484,10 @@ def fit_gev_xr_bootstrap(
 
     # Slightly faster to generate per bootstrap iteration?
     boot_samples = np.stack(
-        [gev.rvs(shape, loc=loc, scale=scale, size=(n_time, n_lat, n_lon)) for _ in range(n_boot)]
+        [
+            gev.rvs(shape, loc=loc, scale=scale, size=(n_time, n_lat, n_lon))
+            for _ in range(n_boot)
+        ]
     )
     boot_samples[boot_samples == 0] = np.nan
 
@@ -524,9 +545,7 @@ def gev_fit_single(
             ssp_name = ssp
         time_name = f"{years[0]}-{years[1]}" if years is not None else "all"
         stat_name = "stat" if stationary else "nonstat"
-        store_name = (
-            f"{ensemble}_{gcm}_{member}_{ssp_name}_{time_name}_{stat_name}_{fit_method}_main.nc"
-        )
+        store_name = f"{ensemble}_{gcm}_{member}_{ssp_name}_{time_name}_{stat_name}_{fit_method}_main.nc"
         store_path = f"{project_data_path}/extreme_value/original_grid/{metric_id}"
 
         if os.path.exists(f"{store_path}/{store_name}"):
@@ -534,7 +553,9 @@ def gev_fit_single(
 
         # Read file
         if ensemble == "LOCA2":
-            files = glob(f"{project_data_path}/metrics/LOCA2/{metric_id}_{gcm}_{member}_{ssp}_*.nc")
+            files = glob(
+                f"{project_data_path}/metrics/LOCA2/{metric_id}_{gcm}_{member}_{ssp}_*.nc"
+            )
             ds = xr.concat([xr.open_dataset(file) for file in files], dim="time")
         else:
             ds = xr.open_dataset(
@@ -579,7 +600,8 @@ def gev_fit_single(
     except Exception as e:
         except_path = f"{project_code_path}/scripts/logs/gev_freq/"
         with open(
-            f"{except_path}/{ensemble}_{gcm}_{member}_{ssp}_{metric_id}_{stat_name}_main.txt", "w"
+            f"{except_path}/{ensemble}_{gcm}_{member}_{ssp}_{metric_id}_{stat_name}_main.txt",
+            "w",
         ) as f:
             f.write(str(e))
 
@@ -608,9 +630,7 @@ def gev_fit_single_bootstrap(
         # Check if done
         time_name = f"{proj_slice[0]}-{proj_slice[1]}_{hist_slice[0]}-{hist_slice[1]}"
         stat_name = "stat" if stationary else "nonstat"
-        store_name = (
-            f"{ensemble}_{gcm}_{member}_{ssp}_{time_name}_{stat_name}_{fit_method}_bootstrap.nc"
-        )
+        store_name = f"{ensemble}_{gcm}_{member}_{ssp}_{time_name}_{stat_name}_{fit_method}_bootstrap.nc"
         store_path = f"{project_data_path}/extreme_value/original_grid/{metric_id}"
 
         if os.path.exists(f"{store_path}/{store_name}"):
@@ -698,7 +718,7 @@ def gev_fit_all(
     proj_years,
     hist_years,
     bootstrap,
-    include_STAR_ESDM=True
+    include_STAR_ESDM=True,
 ):
     """
     Fits a GEV distribution to the entire meta-ensemble of outputs.
@@ -734,7 +754,7 @@ def gev_fit_all(
     for index, row in df_loca.iterrows():
         # Get info
         gcm, member, ssp = row["gcm"], row["member"], row["ssp"]
-        years = hist_years if ssp == "historical" else proj_years        
+        years = hist_years if ssp == "historical" else proj_years
         if bootstrap and ssp == "historical":
             continue
         if years is not None:

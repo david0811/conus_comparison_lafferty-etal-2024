@@ -5,7 +5,7 @@ import pandas as pd
 ################
 # Main metrics
 ################
-gev_metric_ids = ["max_tasmax", "min_tasmin", "max_cdd", "max_hdd", "max_pr"]
+gev_metric_ids = ["max_tasmax", "min_tasmin", "max_pr", "max_cdd", "max_hdd"]
 trend_metric_ids = ["avg_tas", "sum_pr", "sum_hdd", "sum_cdd"]
 
 ################
@@ -61,22 +61,33 @@ loca_gard_mapping = {
 #################################
 def map_store_names(ensemble, gcm, member):
     # Update GARD GCMs
-    gcm_name = gcm.replace("canesm5", "CanESM5").replace("ecearth3", "EC-Earth3").replace("cesm2", "CESM2-LENS")
-    
+    gcm_name = (
+        gcm.replace("canesm5", "CanESM5")
+        .replace("ecearth3", "EC-Earth3")
+        .replace("cesm2", "CESM2-LENS")
+    )
+
     # Fix LOCA CESM mapping
     if ensemble == "LOCA2" and gcm == "CESM2-LENS":
-        member_name = loca_gard_mapping[member] if member in loca_gard_mapping.keys() else member
+        member_name = (
+            loca_gard_mapping[member] if member in loca_gard_mapping.keys() else member
+        )
     else:
         member_name = member
-    
+
     return gcm_name, member_name
+
 
 def check_data_length(data, ensemble, gcm, ssp, years):
     """
     Check length function
     """
     # Check length is as expected
-    if ensemble == "GARD-LENS" and gcm in ["ecearth3", "EC-Earth3"] and ssp == "historical":
+    if (
+        ensemble == "GARD-LENS"
+        and gcm in ["ecearth3", "EC-Earth3"]
+        and ssp == "historical"
+    ):
         expected_length = 2014 - 1970 + 1  # GARD-LENS EC-Earth3
         assert len(data) == expected_length, (
             f"ds length is {len(data)}, expected {expected_length}"
@@ -87,7 +98,8 @@ def check_data_length(data, ensemble, gcm, ssp, years):
             f"ds length is {len(data)}, expected {expected_length}"
         )
     return expected_length
-        
+
+
 def get_unique_loca_metrics(metric_id, project_data_path=roar_data_path):
     """
     Return unique LOCA2 combinations for given metric_id.

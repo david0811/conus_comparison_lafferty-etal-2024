@@ -8,6 +8,7 @@ from utils import roar_code_path as project_code_path
 from utils import roar_data_path as project_data_path
 from utils import check_data_length
 
+
 ###########################
 # Fit GEV to single city
 ###########################
@@ -87,8 +88,12 @@ def fit_gev_city(
 
     # Check length is as expected
     if stationary:
-        expected_length_hist = check_data_length(hist_data, ensemble, gcm, "historical", hist_slice)
-        expected_length_proj = check_data_length(proj_data, ensemble, gcm, ssp, proj_slice)
+        expected_length_hist = check_data_length(
+            hist_data, ensemble, gcm, "historical", hist_slice
+        )
+        expected_length_proj = check_data_length(
+            proj_data, ensemble, gcm, ssp, proj_slice
+        )
     else:
         _ = check_data_length(data, ensemble, gcm, ssp, years)
 
@@ -149,7 +154,7 @@ def fit_gev_city(
                     periods_for_level=periods_for_level,
                     return_period_years=return_period_years,
                     return_period_diffs=return_period_diffs,
-                    return_samples=True
+                    return_samples=True,
                 )
             )
 
@@ -163,7 +168,8 @@ def fit_gev_city(
         )
     else:
         return_levels_main = [
-            scalar * gevu.estimate_return_level(
+            scalar
+            * gevu.estimate_return_level(
                 period,
                 params[0] + params[1] * (return_period_year - years[0]),
                 params[2],
@@ -173,65 +179,88 @@ def fit_gev_city(
             for return_period_year in return_period_years
         ]
         return_level_diffs_main = [
-            scalar * (
-            gevu.estimate_return_level(
-                period,
-                params[0] + params[1] * (return_period_diff[1] - years[0]),
-                params[2],
-                params[3],
-            )) -
-            scalar * (
-            gevu.estimate_return_level(
-                period,
-                params[0] + params[1] * (return_period_diff[0] - years[0]),
-                params[2],
-                params[3],
+            scalar
+            * (
+                gevu.estimate_return_level(
+                    period,
+                    params[0] + params[1] * (return_period_diff[1] - years[0]),
+                    params[2],
+                    params[3],
+                )
             )
+            - scalar
+            * (
+                gevu.estimate_return_level(
+                    period,
+                    params[0] + params[1] * (return_period_diff[0] - years[0]),
+                    params[2],
+                    params[3],
+                )
             )
             for period in periods_for_level
             for return_period_diff in return_period_diffs
         ]
         return_level_chfcs_main = [
-            (scalar * (
-            gevu.estimate_return_level(
-                period,
-                params[0] + params[1] * (return_period_diff[1] - years[0]),
-                params[2],
-                params[3],
-            ))) /
-            (scalar * (
-            gevu.estimate_return_level(
-                period,
-                params[0] + params[1] * (return_period_diff[0] - years[0]),
-                params[2],
-                params[3],
-            )))
+            (
+                scalar
+                * (
+                    gevu.estimate_return_level(
+                        period,
+                        params[0] + params[1] * (return_period_diff[1] - years[0]),
+                        params[2],
+                        params[3],
+                    )
+                )
+            )
+            / (
+                scalar
+                * (
+                    gevu.estimate_return_level(
+                        period,
+                        params[0] + params[1] * (return_period_diff[0] - years[0]),
+                        params[2],
+                        params[3],
+                    )
+                )
+            )
             for period in periods_for_level
             for return_period_diff in return_period_diffs
         ]
 
     # Return
     if return_samples:
-        if stationary: 
+        if stationary:
             df_res = pd.DataFrame(
                 {
-                    "ensemble": ensemble,
-                    "gcm": gcm,
-                    "member": member,
-                    "ssp": ssp,
-                    "n_boot": "main",
-                    "loc_hist": hist_params[0],
-                    "scale_hist": hist_params[1],
-                    "shape_hist": hist_params[2],
-                    "loc_proj": proj_params[0],
-                    "scale_proj": proj_params[1],
-                    "shape_proj": proj_params[2],
+                    "ensemble": [ensemble],
+                    "gcm": [gcm],
+                    "member": [member],
+                    "ssp": [ssp],
+                    "n_boot": ["main"],
+                    "loc_hist": [hist_params[0]],
+                    "scale_hist": [hist_params[1]],
+                    "shape_hist": [hist_params[2]],
+                    "loc_proj": [proj_params[0]],
+                    "scale_proj": [proj_params[1]],
+                    "shape_proj": [proj_params[2]],
                     **{
-                        f"{period}yr_return_level_hist": return_levels_hist_main[i]
+                        f"{period}yr_return_level_hist": [return_levels_hist_main[i]]
                         for i, period in enumerate(periods_for_level)
                     },
                     **{
-                        f"{period}yr_return_level_proj": return_levels_proj_main[i]
+                        f"{period}yr_return_level_proj": [return_levels_proj_main[i]]
+                        for i, period in enumerate(periods_for_level)
+                    },
+                    **{
+                        f"{period}yr_return_level_diff": [
+                            return_levels_proj_main[i] - return_levels_hist_main[i]
+                        ]
+                        for i, period in enumerate(periods_for_level)
+                    },
+                    **{
+                        f"{period}yr_return_level_chfc": [
+                            return_levels_proj_main[i] / return_levels_hist_main[i]
+                        ]
                         for i, period in enumerate(periods_for_level)
                     },
                 }
@@ -250,11 +279,27 @@ def fit_gev_city(
                     "scale_proj": bootstrap_params_proj[:, 1],
                     "shape_proj": bootstrap_params_proj[:, 2],
                     **{
-                        f"{period}yr_return_level_hist": scalar * bootstrap_rls_hist[:, i]
+                        f"{period}yr_return_level_hist": scalar
+                        * bootstrap_rls_hist[:, i]
                         for i, period in enumerate(periods_for_level)
                     },
                     **{
-                        f"{period}yr_return_level_proj": scalar * bootstrap_rls_proj[:, i]
+                        f"{period}yr_return_level_proj": scalar
+                        * bootstrap_rls_proj[:, i]
+                        for i, period in enumerate(periods_for_level)
+                    },
+                    **{
+                        f"{period}yr_return_level_diff": (
+                            scalar * bootstrap_rls_proj[:, i]
+                        )
+                        - (scalar * bootstrap_rls_hist[:, i])
+                        for i, period in enumerate(periods_for_level)
+                    },
+                    **{
+                        f"{period}yr_return_level_chfc": (
+                            scalar * bootstrap_rls_proj[:, i]
+                        )
+                        / (scalar * bootstrap_rls_hist[:, i])
                         for i, period in enumerate(periods_for_level)
                     },
                 }
@@ -263,29 +308,35 @@ def fit_gev_city(
         else:
             df_res = pd.DataFrame(
                 {
-                    "ensemble": ensemble,
-                    "gcm": gcm,
-                    "member": member,
-                    "ssp": ssp,
-                    "n_boot": "main",
+                    "ensemble": [ensemble],
+                    "gcm": [gcm],
+                    "member": [member],
+                    "ssp": [ssp],
+                    "n_boot": ["main"],
                     "loc_intcp": params[0],
                     "loc_trend": params[1],
                     "scale": params[2],
                     "shape": params[3],
                     **{
-                        f"{period}yr_return_level_{return_period_year}": return_levels_main[i]
-                        for i, period in enumerate(periods_for_level)
-                        for return_period_year in return_period_years
+                        f"{period}yr_return_level_{return_period_year}": return_levels_main[
+                            i_period * len(return_period_years) + i_year
+                        ]
+                        for i_period, period in enumerate(periods_for_level)
+                        for i_year, return_period_year in enumerate(return_period_years)
                     },
                     **{
-                        f"{period}yr_return_level_diff_{return_period_diff[1]}-{return_period_diff[0]}": return_level_diffs_main[i]
-                        for i, period in enumerate(periods_for_level)
-                        for return_period_diff in return_period_diffs
+                        f"{period}yr_return_level_diff_{return_period_diff[1]}-{return_period_diff[0]}": return_level_diffs_main[
+                            i_period * len(return_period_diffs) + i_diff
+                        ]
+                        for i_period, period in enumerate(periods_for_level)
+                        for i_diff, return_period_diff in enumerate(return_period_diffs)
                     },
                     **{
-                        f"{period}yr_return_level_chfc_{return_period_diff[1]}-{return_period_diff[0]}": return_level_chfcs_main[i]
-                        for i, period in enumerate(periods_for_level)
-                        for return_period_diff in return_period_diffs
+                        f"{period}yr_return_level_chfc_{return_period_diff[1]}-{return_period_diff[0]}": return_level_chfcs_main[
+                            i_period * len(return_period_diffs) + i_diff
+                        ]
+                        for i_period, period in enumerate(periods_for_level)
+                        for i_diff, return_period_diff in enumerate(return_period_diffs)
                     },
                 }
             )
@@ -301,19 +352,25 @@ def fit_gev_city(
                     "scale": bootstrap_params[:, 2],
                     "shape": bootstrap_params[:, 3],
                     **{
-                        f"{period}yr_return_level_{return_period_year}": bootstrap_rls[i]
-                        for i, period in enumerate(periods_for_level)
-                        for return_period_year in return_period_years
+                        f"{period}yr_return_level_{return_period_year}": bootstrap_rls[
+                            :, i_period * len(return_period_years) + i_year
+                        ]
+                        for i_period, period in enumerate(periods_for_level)
+                        for i_year, return_period_year in enumerate(return_period_years)
                     },
                     **{
-                        f"{period}yr_return_level_diff_{return_period_diff[1]}-{return_period_diff[0]}": bootstrap_rl_diffs[i]
-                        for i, period in enumerate(periods_for_level)
-                        for return_period_diff in return_period_diffs
+                        f"{period}yr_return_level_diff_{return_period_diff[1]}-{return_period_diff[0]}": bootstrap_rl_diffs[
+                            :, i_period * len(return_period_diffs) + i_diff
+                        ]
+                        for i_period, period in enumerate(periods_for_level)
+                        for i_diff, return_period_diff in enumerate(return_period_diffs)
                     },
                     **{
-                        f"{period}yr_return_level_chfc_{return_period_diff[1]}-{return_period_diff[0]}": bootstrap_rl_chfcs[i]
-                        for i, period in enumerate(periods_for_level)
-                        for return_period_diff in return_period_diffs
+                        f"{period}yr_return_level_chfc_{return_period_diff[1]}-{return_period_diff[0]}": bootstrap_rl_chfcs[
+                            :, i_period * len(return_period_diffs) + i_diff
+                        ]
+                        for i_period, period in enumerate(periods_for_level)
+                        for i_diff, return_period_diff in enumerate(return_period_diffs)
                     },
                 }
             )
@@ -343,85 +400,104 @@ def fit_gev_city(
             # Differences
             return_levels_diff_main = return_levels_proj_main - return_levels_hist_main
             return_levels_diff_q025 = np.nanpercentile(
-                (scalar * bootstrap_rls_proj) - (scalar * bootstrap_rls_hist), 2.5, axis=0
+                (scalar * bootstrap_rls_proj) - (scalar * bootstrap_rls_hist),
+                2.5,
+                axis=0,
             )
             return_levels_diff_q975 = np.nanpercentile(
-                (scalar * bootstrap_rls_proj) - (scalar * bootstrap_rls_hist), 97.5, axis=0
+                (scalar * bootstrap_rls_proj) - (scalar * bootstrap_rls_hist),
+                97.5,
+                axis=0,
             )
             # Change factors
             return_levels_chfc_main = return_levels_proj_main / return_levels_hist_main
             return_levels_chfc_q025 = np.nanpercentile(
-                (scalar * bootstrap_rls_proj) / (scalar * bootstrap_rls_hist), 2.5, axis=0
+                (scalar * bootstrap_rls_proj) / (scalar * bootstrap_rls_hist),
+                2.5,
+                axis=0,
             )
             return_levels_chfc_q975 = np.nanpercentile(
-                (scalar * bootstrap_rls_proj) / (scalar * bootstrap_rls_hist), 97.5, axis=0
+                (scalar * bootstrap_rls_proj) / (scalar * bootstrap_rls_hist),
+                97.5,
+                axis=0,
             )
-            # Return 
+            # Return
             df_out = pd.DataFrame(
-            {
-                "quantile": ["main", "q025", "q975"],
-                "ensemble": [ensemble, ensemble, ensemble],
-                "gcm": [gcm, gcm, gcm],
-                "member": [member, member, member],
-                "ssp": [ssp, ssp, ssp],
-                "loc_hist": [hist_params[0], hist_params_q025[0], hist_params_q975[0]],
-                "scale_hist": [
-                    hist_params[1],
-                    hist_params_q025[1],
-                    hist_params_q975[1],
-                ],
-                "shape_hist": [
-                    hist_params[2],
-                    hist_params_q025[2],
-                    hist_params_q975[2],
-                ],
-                "loc_proj": [proj_params[0], proj_params_q025[0], proj_params_q975[0]],
-                "scale_proj": [
-                    proj_params[1],
-                    proj_params_q025[1],
-                    proj_params_q975[1],
-                ],
-                "shape_proj": [
-                    proj_params[2],
-                    proj_params_q025[2],
-                    proj_params_q975[2],
-                ],
-                **{
-                    f"{period}yr_return_level_hist": [
-                        return_levels_hist_main[i],
-                        return_levels_hist_q025[i],
-                        return_levels_hist_q975[i],
-                    ]
-                    for i, period in enumerate(periods_for_level)
-                },
-                **{
-                    f"{period}yr_return_level_proj": [
-                        return_levels_proj_main[i],
-                        return_levels_proj_q025[i],
-                        return_levels_proj_q975[i],
-                    ]
-                    for i, period in enumerate(periods_for_level)
-                },
-                **{
-                    f"{period}yr_return_level_diff": [
-                        return_levels_diff_main[i],
-                        return_levels_diff_q025[i],
-                        return_levels_diff_q975[i],
-                    ]
-                    for i, period in enumerate(periods_for_level)
-                },
-                **{
-                    f"{period}yr_return_level_chfc": [
-                        return_levels_chfc_main[i],
-                        return_levels_chfc_q025[i],
-                        return_levels_chfc_q975[i],
-                    ]
-                    for i, period in enumerate(periods_for_level)
-                },
-            })
+                {
+                    "quantile": ["main", "q025", "q975"],
+                    "ensemble": [ensemble, ensemble, ensemble],
+                    "gcm": [gcm, gcm, gcm],
+                    "member": [member, member, member],
+                    "ssp": [ssp, ssp, ssp],
+                    "loc_hist": [
+                        hist_params[0],
+                        hist_params_q025[0],
+                        hist_params_q975[0],
+                    ],
+                    "scale_hist": [
+                        hist_params[1],
+                        hist_params_q025[1],
+                        hist_params_q975[1],
+                    ],
+                    "shape_hist": [
+                        hist_params[2],
+                        hist_params_q025[2],
+                        hist_params_q975[2],
+                    ],
+                    "loc_proj": [
+                        proj_params[0],
+                        proj_params_q025[0],
+                        proj_params_q975[0],
+                    ],
+                    "scale_proj": [
+                        proj_params[1],
+                        proj_params_q025[1],
+                        proj_params_q975[1],
+                    ],
+                    "shape_proj": [
+                        proj_params[2],
+                        proj_params_q025[2],
+                        proj_params_q975[2],
+                    ],
+                    **{
+                        f"{period}yr_return_level_hist": [
+                            return_levels_hist_main[i],
+                            return_levels_hist_q025[i],
+                            return_levels_hist_q975[i],
+                        ]
+                        for i, period in enumerate(periods_for_level)
+                    },
+                    **{
+                        f"{period}yr_return_level_proj": [
+                            return_levels_proj_main[i],
+                            return_levels_proj_q025[i],
+                            return_levels_proj_q975[i],
+                        ]
+                        for i, period in enumerate(periods_for_level)
+                    },
+                    **{
+                        f"{period}yr_return_level_diff": [
+                            return_levels_diff_main[i],
+                            return_levels_diff_q025[i],
+                            return_levels_diff_q975[i],
+                        ]
+                        for i, period in enumerate(periods_for_level)
+                    },
+                    **{
+                        f"{period}yr_return_level_chfc": [
+                            return_levels_chfc_main[i],
+                            return_levels_chfc_q025[i],
+                            return_levels_chfc_q975[i],
+                        ]
+                        for i, period in enumerate(periods_for_level)
+                    },
+                }
+            )
             # Drop change factors for tasmin since they are meaningless
             if metric_id == "min_tasmin":
-                df_out = df_out.drop(columns=[col for col in df_out.columns if "chfc" in col])
+                df_out = df_out.drop(
+                    columns=[col for col in df_out.columns if "chfc" in col]
+                )
             return df_out
         else:
             # Parameters
@@ -431,14 +507,22 @@ def fit_gev_city(
             return_levels_q025 = np.nanpercentile(scalar * bootstrap_rls, 2.5, axis=0)
             return_levels_q975 = np.nanpercentile(scalar * bootstrap_rls, 97.5, axis=0)
             # Return level differences
-            return_level_diffs_q025 = np.nanpercentile(scalar * bootstrap_rl_diffs, 2.5, axis=0)
-            return_level_diffs_q975 = np.nanpercentile(scalar * bootstrap_rl_diffs, 97.5, axis=0)
+            return_level_diffs_q025 = np.nanpercentile(
+                scalar * bootstrap_rl_diffs, 2.5, axis=0
+            )
+            return_level_diffs_q975 = np.nanpercentile(
+                scalar * bootstrap_rl_diffs, 97.5, axis=0
+            )
             # Return level change factors
-            return_level_chfcs_q025 = np.nanpercentile(scalar * bootstrap_rl_chfcs, 2.5, axis=0)
-            return_level_chfcs_q975 = np.nanpercentile(scalar * bootstrap_rl_chfcs, 97.5, axis=0)
+            return_level_chfcs_q025 = np.nanpercentile(
+                scalar * bootstrap_rl_chfcs, 2.5, axis=0
+            )
+            return_level_chfcs_q975 = np.nanpercentile(
+                scalar * bootstrap_rl_chfcs, 97.5, axis=0
+            )
 
             # Return
-            df_out =  pd.DataFrame(
+            df_out = pd.DataFrame(
                 {
                     "quantile": ["main", "q025", "q975"],
                     "ensemble": [ensemble, ensemble, ensemble],
@@ -448,31 +532,52 @@ def fit_gev_city(
                     "loc_intcp": [params[0], params_q025[0], params_q975[0]],
                     "loc_trend": [params[1], params_q025[1], params_q975[1]],
                     "scale": [params[2], params_q025[2], params_q975[2]],
-                    "shape": [params[3], params_q025[3], params_q975[3],
+                    "shape": [
+                        params[3],
+                        params_q025[3],
+                        params_q975[3],
                     ],
                     **{
                         f"{period}yr_return_level_{return_period_year}": [
-                            return_levels_main[i_period * len(return_period_years) + i_year],
-                            return_levels_q025[i_period * len(return_period_years) + i_year],
-                            return_levels_q975[i_period * len(return_period_years) + i_year],
+                            return_levels_main[
+                                i_period * len(return_period_years) + i_year
+                            ],
+                            return_levels_q025[
+                                i_period * len(return_period_years) + i_year
+                            ],
+                            return_levels_q975[
+                                i_period * len(return_period_years) + i_year
+                            ],
                         ]
                         for i_period, period in enumerate(periods_for_level)
                         for i_year, return_period_year in enumerate(return_period_years)
                     },
                     **{
                         f"{period}yr_return_level_diff_{return_period_diff[1]}-{return_period_diff[0]}": [
-                            return_level_diffs_main[i_period * len(return_period_diffs) + i_diff],
-                            return_level_diffs_q025[i_period * len(return_period_diffs) + i_diff],
-                            return_level_diffs_q975[i_period * len(return_period_diffs) + i_diff],
+                            return_level_diffs_main[
+                                i_period * len(return_period_diffs) + i_diff
+                            ],
+                            return_level_diffs_q025[
+                                i_period * len(return_period_diffs) + i_diff
+                            ],
+                            return_level_diffs_q975[
+                                i_period * len(return_period_diffs) + i_diff
+                            ],
                         ]
                         for i_period, period in enumerate(periods_for_level)
                         for i_diff, return_period_diff in enumerate(return_period_diffs)
                     },
                     **{
                         f"{period}yr_return_level_chfc_{return_period_diff[1]}-{return_period_diff[0]}": [
-                            return_level_chfcs_main[i_period * len(return_period_diffs) + i_diff],
-                            return_level_chfcs_q025[i_period * len(return_period_diffs) + i_diff],
-                            return_level_chfcs_q975[i_period * len(return_period_diffs) + i_diff],
+                            return_level_chfcs_main[
+                                i_period * len(return_period_diffs) + i_diff
+                            ],
+                            return_level_chfcs_q025[
+                                i_period * len(return_period_diffs) + i_diff
+                            ],
+                            return_level_chfcs_q975[
+                                i_period * len(return_period_diffs) + i_diff
+                            ],
                         ]
                         for i_period, period in enumerate(periods_for_level)
                         for i_diff, return_period_diff in enumerate(return_period_diffs)
@@ -481,7 +586,9 @@ def fit_gev_city(
             )
             # Drop change factors for tasmin since they are meaningless
             if metric_id == "min_tasmin":
-                df_out = df_out.drop(columns=[col for col in df_out.columns if "chfc" in col])
+                df_out = df_out.drop(
+                    columns=[col for col in df_out.columns if "chfc" in col]
+                )
             return df_out
 
 
@@ -499,14 +606,15 @@ def fit_ensemble_gev_city(
     return_period_years=None,
     return_period_diffs=None,
     store=True,
+    return_samples=False,
     project_data_path=project_data_path,
 ):
     """
     Fits GEV (Generalized Extreme Value) distributions across an entire climate model ensemble for a specific city.
-    
+
     This function processes all available ensemble members, GCMs, and scenarios for a given city and metric,
     fitting either stationary or non-stationary GEV distributions with optional bootstrapping for uncertainty estimation.
-    
+
     Parameters
     ----------
     city : str
@@ -535,9 +643,11 @@ def fit_ensemble_gev_city(
         Year pairs for calculating return level differences in non-stationary fits
     store : bool, optional
         If True, saves results to file; if False, returns results DataFrame, defaults to True
+    return_samples: bool, optional
+        If True, return individual bootstrap samples
     project_data_path : str, optional
         Base path for project data files
-        
+
     Returns
     -------
     pandas.DataFrame or None
@@ -545,7 +655,7 @@ def fit_ensemble_gev_city(
         If store=True, saves results to CSV and returns None.
         Returns None if results file already exists.
     """
-    
+
     # Get unique combos
     df = pd.read_csv(f"{project_data_path}/metrics/cities/{city}_{metric_id}.csv")
     df = df.set_index(["ensemble", "gcm", "member", "ssp"]).sort_index()
@@ -553,11 +663,12 @@ def fit_ensemble_gev_city(
 
     # Check if done
     stat_str = "stat" if stationary else "nonstat"
+    sample_str = "_samples" if return_samples else ""
     if stationary:
-        file_name = f"{city}_{metric_id}_{hist_slice[0]}-{hist_slice[1]}_{proj_slice[0]}-{proj_slice[1]}_{fit_method}_{stat_str}_nboot{n_boot}.csv"
+        file_name = f"{city}_{metric_id}_{hist_slice[0]}-{hist_slice[1]}_{proj_slice[0]}-{proj_slice[1]}_{fit_method}_{stat_str}_nboot{n_boot}{sample_str}.csv"
     else:
-        file_name = f"{city}_{metric_id}_{years[0]}-{years[1]}_{fit_method}_{stat_str}_nboot{n_boot}.csv"
-        
+        file_name = f"{city}_{metric_id}_{years[0]}-{years[1]}_{fit_method}_{stat_str}_nboot{n_boot}{sample_str}.csv"
+
     if os.path.exists(
         f"{project_data_path}/extreme_value/cities/original_grid/freq/{file_name}"
     ):
@@ -572,7 +683,7 @@ def fit_ensemble_gev_city(
         if ssp == "historical":
             continue
         if ensemble == "STAR-ESDM" and gcm == "TaiESM1":
-            continue # Skip recalled outputs
+            continue  # Skip recalled outputs
         try:
             df_tmp = fit_gev_city(
                 city=city,
@@ -591,6 +702,7 @@ def fit_ensemble_gev_city(
                 n_boot=n_boot,
                 return_period_years=return_period_years,
                 return_period_diffs=return_period_diffs,
+                return_samples=return_samples,
             )
             df_out.append(df_tmp)
         except Exception as e:

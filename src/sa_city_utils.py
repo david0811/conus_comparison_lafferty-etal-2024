@@ -1,8 +1,8 @@
 import os
 from glob import glob
 
-import numpy as np
 import dask
+import numpy as np
 import pandas as pd
 import xarray as xr
 
@@ -12,6 +12,7 @@ from utils import roar_data_path as project_data_path
 #####################################
 # Calculating city timeseries metrics
 #####################################
+
 
 def get_city_timeseries(
     city,
@@ -174,6 +175,7 @@ def get_city_timeseries_all(
         index=False,
     )
 
+
 #######################
 # UC for city df
 #######################
@@ -181,6 +183,10 @@ def calculate_df_uc(df, plot_col, calculate_gev_uc=True, n_min_members=5):
     """
     Calculate the uncertainty decomposition based on pd DataFrame.
     """
+
+    # Just in case: drop TaiESM1 from STAR (too hot!)
+    if "STAR-ESDM" in df["ensemble"].unique():
+        df = df[df["member"] != "TaiESM1"]
 
     # Range functions
     def get_range(x):
@@ -203,10 +209,23 @@ def calculate_df_uc(df, plot_col, calculate_gev_uc=True, n_min_members=5):
         return df_tmp
 
     # Get combos to include
-    if calculate_gev_uc:
+    if "n_boot" in df.columns:
+        df_main = df[df["n_boot"] == "main"]
+        df_boot = (
+            df[df["n_boot"] != "main"]
+            .groupby(["ensemble", "gcm", "member", "ssp"])
+            .quantile([0.025, 0.975], numeric_only=True)
+            .reset_index()
+            .rename(columns={"level_4": "quantile"})
+        )
+        # Map quantiles to strings
+        df_boot["quantile"] = df_boot["quantile"].map({0.025: "q025", 0.975: "q975"})
+    elif "quantile" in df.columns:
         df_main = df[df["quantile"] == "main"]
+        df_boot = df[df["quantile"] != "main"]
     else:
-        df_main = df.copy()
+        df_main = df
+        df_boot = None
 
     combos_to_include = (
         df_main.groupby(["ensemble", "gcm", "ssp"]).count()[plot_col] >= n_min_members
@@ -260,7 +279,7 @@ def calculate_df_uc(df, plot_col, calculate_gev_uc=True, n_min_members=5):
     # GEV uncertainty if included
     if calculate_gev_uc:
         gev_uc = get_quantile_range(
-            df=df,
+            df=df_boot,
             groupby_cols=["gcm", "ensemble", "member", "ssp"],
             plot_col=plot_col,
         )
