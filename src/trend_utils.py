@@ -4,6 +4,7 @@ from glob import glob
 
 import dask
 import numpy as np
+from sklearn.linear_model import LinearRegression
 import pandas as pd
 import xarray as xr
 
@@ -14,6 +15,9 @@ from utils import roar_data_path as project_data_path
 
 # Linear regression function
 def linear_regression(X, y, expected_length=None):
+    """
+    Fit linear regression to data.
+    """
     if np.isnan(y).all():
         return np.array([np.nan, np.nan])
 
@@ -29,6 +33,42 @@ def linear_regression(X, y, expected_length=None):
     return np.polyfit(X, y, 1)
 
 
+def linear_regression_bootstrap(X, y, n_boot, expected_length=None, return_samples=False):
+    # Check 
+    if np.isnan(y).all():
+        return np.array([[np.nan, np.nan], [np.nan, np.nan]])
+
+    # Check length of non-NaNs
+    if expected_length is not None:
+        non_nans = np.count_nonzero(~np.isnan(y))
+        assert non_nans == expected_length, (
+            f"data length is {non_nans}, expected {expected_length}"
+        )
+    # Should be no zeros in data, this was happening with some CDD, HDD instead of NaN
+    assert np.sum(y == 0.0) < 5, "At least 5 zeros in data"
+
+    # Fit original model
+    slope, intercept = np.polyfit(X, y, 1)
+
+    # Bootstrap the residuals
+    boot_slope = np.zeros(n_boot)
+    boot_intercept = np.zeros(n_boot)
+    predictions = (intercept + slope * X)
+    residuals = y - predictions
+    boot_sample = np.random.choice(residuals, size=(len(residuals), n_boot), replace=True)
+    # Vectorize regression with sklearn
+    y_matrix = np.tile(y, (n_boot, 1)).T + boot_sample
+    lr = LinearRegression(fit_intercept=True)
+    lr.fit(X.reshape(-1, 1), y_matrix)
+    boot_slope, boot_intercept = lr.coef_.T[0], lr.intercept_
+    
+    # Return
+    if return_samples:
+        return boot_slope, boot_intercept
+    else:
+        return np.array([np.quantile(boot_slope, [0.025, 0.975]), np.quantile(boot_intercept, [0.025, 0.975])])
+
+
 # Fit trend for single output
 def trend_fit_single(
     ensemble,
@@ -38,11 +78,13 @@ def trend_fit_single(
     metric_id,
     years,
     store_path,
+    n_boot=None,
+    return_samples=False,
     project_data_path=project_data_path,
     project_code_path=project_code_path,
 ):
     """
-    Read a single metric file and fit the GEV.
+    Read a single metric file and fit the trend.
     """
     try:
         # Check if done
@@ -51,7 +93,8 @@ def trend_fit_single(
         else:
             ssp_name = ssp
         time_name = f"{years[0]}-{years[1]}" if years is not None else "all"
-        store_name = f"{ensemble}_{gcm}_{member}_{ssp_name}_{time_name}.nc"
+        boot_name = f"bootstrap{n_boot}" if n_boot is not None else "main"
+        store_name = f"{ensemble}_{gcm}_{member}_{ssp_name}_{time_name}_{boot_name}.nc"
 
         if os.path.exists(f"{store_path}/{store_name}"):
             return None
@@ -79,13 +122,12 @@ def trend_fit_single(
         var_id = metric_id.split("_")[1]
         expected_length = years[1] - years[0] + 1
 
+        # Main
         linear_regression_func = partial(
             linear_regression,
             expected_length=expected_length,
         )
-
-        # Linear trend
-        result = xr.apply_ufunc(
+        main_result = xr.apply_ufunc(
             linear_regression_func,
             ds["time"],
             ds[var_id],
@@ -99,7 +141,55 @@ def trend_fit_single(
             output_dtypes=[float],
             dask_gufunc_kwargs={"output_sizes": {"coef": 2}},
         )
-        ds_out = xr.Dataset({"intcp": result.sel(coef=1), "slope": result.sel(coef=0)})
+        # Bootstrap
+        if n_boot is not None:
+            linear_regression_func = partial(
+                linear_regression_bootstrap,
+                n_boot=n_boot,
+                expected_length=expected_length,
+                return_samples=return_samples,
+            )
+            if return_samples:
+                dask_gufunc_kwargs = {"output_sizes": {"coef": 2, "n_boot": n_boot}}
+                output_core_dims = [["coef", "n_boot"]]
+            else:
+                dask_gufunc_kwargs = {"output_sizes": {"coef": 2, "quantile": 2}}
+                output_core_dims = [["coef", "quantile"]]
+            bootstrap_result = xr.apply_ufunc(
+                linear_regression_func,
+                ds["time"],
+                ds[var_id],
+                input_core_dims=[["time"], ["time"]],
+                output_core_dims=output_core_dims,
+                vectorize=True,
+                dask="forbidden",
+                output_dtypes=[float],
+                dask_gufunc_kwargs=dask_gufunc_kwargs,
+            )
+        
+        # Gather results
+        ds_main = xr.Dataset({"intcp": main_result.sel(coef=1), "slope": main_result.sel(coef=0)})
+        if return_samples:
+            ds_main = ds_main.assign_coords({"n_boot": np.arange(n_boot)})
+        else:
+            ds_main = ds_main.assign_coords({"quantile": ["main"]})
+
+        if n_boot is not None:
+            if return_samples:
+                ds_boot = xr.Dataset({"intcp": bootstrap_result.sel(coef=1), "slope": bootstrap_result.sel(coef=0)})
+                ds_boot = ds_boot.assign_coords({"n_boot": np.arange(n_boot)})
+            else:
+                ds_boot = xr.Dataset({"intcp": bootstrap_result.sel(coef=1), "slope": bootstrap_result.sel(coef=0)})
+                ds_boot = ds_boot.assign_coords({"quantile": ["q025", "q975"]})
+
+        # Merge
+        if n_boot is not None:
+            if return_samples:
+                ds_out = xr.concat([ds_main, ds_boot], dim="n_boot")
+            else:
+                ds_out = xr.concat([ds_main, ds_boot], dim="quantile")
+        else:
+            ds_out = ds_main
 
         ## Store
         # Update GARD GCMs
@@ -131,6 +221,7 @@ def trend_fit_single(
         assert len(np.unique(ds_out["slope"])) > 1, "all slopes are identical"
         # Store
         ds_out.to_netcdf(f"{store_path}/{store_name}")
+
     # Log if error
     except Exception as e:
         except_path = f"{project_code_path}/scripts/logs/trend"
@@ -139,7 +230,6 @@ def trend_fit_single(
             "w",
         ) as f:
             f.write(str(e))
-
 
 ###############################
 # Trend fit across whole ensemble
@@ -166,7 +256,7 @@ def get_unique_loca_metrics(metric_id):
     return df.drop_duplicates().reset_index()
 
 
-def trend_fit_all(metric_id, future_years=[2015, 2100], hist_years=None):
+def trend_fit_all(metric_id, n_boot=None, future_years=[2015, 2100], hist_years=None):
     """
     Fits a trend to the entire meta-ensemble of outputs.
     """
@@ -192,6 +282,7 @@ def trend_fit_all(metric_id, future_years=[2015, 2100], hist_years=None):
                 metric_id=metric_id,
                 years=years,
                 store_path=store_path,
+                n_boot=n_boot,
             )
             delayed.append(out)
 
@@ -216,6 +307,7 @@ def trend_fit_all(metric_id, future_years=[2015, 2100], hist_years=None):
                     metric_id=metric_id,
                     years=years,
                     store_path=store_path,
+                    n_boot=n_boot,
                 )
                 delayed.append(out)
 
@@ -243,6 +335,7 @@ def trend_fit_all(metric_id, future_years=[2015, 2100], hist_years=None):
                     metric_id=metric_id,
                     years=years,
                     store_path=store_path,
+                    n_boot=n_boot,
                 )
                 delayed.append(out)
 
