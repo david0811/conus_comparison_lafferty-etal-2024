@@ -23,6 +23,8 @@ def linear_regression(X, y, expected_length=None):
         assert non_nans == expected_length, (
             f"data length is {non_nans}, expected {expected_length}"
         )
+    # Should be no zeros in data, this was happening with some CDD, HDD instead of NaN
+    assert np.sum(y == 0.0) < 5, "At least 5 zeros in data"
 
     return np.polyfit(X, y, 1)
 
@@ -125,10 +127,8 @@ def trend_fit_single(
         )
         # Make sure not all NaNs
         assert np.count_nonzero(~np.isnan(ds_out["slope"])), "all NaNs in fit"
-        # Make sure not all same (happened with a couple for some reason)
-        assert np.all(ds_out["slope"] != ds_out["slope"].to_numpy()[0, 0]), (
-            "all same in fit"
-        )
+        # Or alternatively, check number of unique values
+        assert len(np.unique(ds_out["slope"])) > 1, "all slopes are identical"
         # Store
         ds_out.to_netcdf(f"{store_path}/{store_name}")
     # Log if error
@@ -292,7 +292,8 @@ def trend_fit_city(metric_id, city, years=[2015, 2100]):
 
         # Apply linear regression
         try:
-            slope, intercept = linear_regression(X, y)
+            expected_length = years[1] - years[0] + 1
+            slope, intercept = linear_regression(X, y, expected_length)
             results.append(
                 {
                     "gcm": name[0],
@@ -304,7 +305,7 @@ def trend_fit_city(metric_id, city, years=[2015, 2100]):
                 }
             )
         except Exception as e:
-            print(f"Error in group {name}: {e}")
+            print(f"Error for {city} {metric_id} {name}: {e}")
 
     # Convert results to DataFrame
     results_df = pd.DataFrame(results)

@@ -276,6 +276,19 @@ def calculate_df_uc(df, plot_col, calculate_gev_uc=True, n_min_members=5):
     ds_uc_mean = ds_uc.replace(0.0, np.nan).mean()
     ds_uc_std = ds_uc.replace(0.0, np.nan).std()
 
+    # Total uncertainty
+    if "n_boot" in df.columns:
+        df_samples = df[df["n_boot"] != "main"]
+        uc_99w = df_samples[plot_col].quantile(0.995) - df_samples[plot_col].quantile(
+            0.005
+        )
+    elif "quantile" in df.columns:
+        upper = df[df["quantile"] == "q975"][plot_col].quantile(0.995)
+        lower = df[df["quantile"] == "q025"][plot_col].quantile(0.005)
+        uc_99w = upper - lower
+    else:
+        uc_99w = df[plot_col].quantile(0.995) - df[plot_col].quantile(0.005)
+
     # GEV uncertainty if included
     if calculate_gev_uc:
         gev_uc = get_quantile_range(
@@ -299,6 +312,7 @@ def calculate_df_uc(df, plot_col, calculate_gev_uc=True, n_min_members=5):
                 "iv_uc",
                 "ds_uc",
                 "gev_uc",
+                "uc_99w",
             ],
             "mean": [
                 ssp_uc_mean,
@@ -307,6 +321,7 @@ def calculate_df_uc(df, plot_col, calculate_gev_uc=True, n_min_members=5):
                 iv_uc_mean,
                 ds_uc_mean,
                 gev_uc_mean,
+                uc_99w,
             ],
             "std": [
                 ssp_uc_std,
@@ -315,6 +330,7 @@ def calculate_df_uc(df, plot_col, calculate_gev_uc=True, n_min_members=5):
                 iv_uc_std,
                 ds_uc_std,
                 gev_uc_std,
+                np.nan,
             ],
         }
     )

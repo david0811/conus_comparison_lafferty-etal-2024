@@ -633,6 +633,56 @@ def plot_city_results(
         legend.set_zorder(10)
 
 
+def plot_uc_bar(df_trend_uc, df_gev_uc, ax, bar_width=0.35, legend=False):
+    uc_names = [
+        "Scenario \n uncertainty",
+        "Response \n uncertainty",
+        "Internal \n variability",
+        "Downscaling \n uncertainty",
+        "GEV fit \n uncertainty",
+    ]
+
+    # Normalize by uc_99w
+    df_trend_uc = df_trend_uc.apply(lambda x: x / df_trend_uc.loc["uc_99w"]["mean"])
+    df_gev_uc = df_gev_uc.apply(lambda x: x / df_gev_uc.loc["uc_99w"]["mean"])
+
+    # Make sure only one SSP type
+    df_trend_uc = df_trend_uc.drop(["ssp_uc", "uc_99w"])
+    df_gev_uc = df_gev_uc.drop(["ssp_uc", "uc_99w"])
+
+    # Set positions of the bars on X axis
+    r1 = np.arange(len(df_trend_uc))
+    r2 = [x + bar_width for x in r1]
+
+    # Create the grouped bar chart
+    bars1 = ax.bar(
+        r1[: len(df_trend_uc)],
+        df_trend_uc["mean"],
+        width=bar_width,
+        color="C0",
+        label="Trend (bulk metric)",
+        yerr=df_trend_uc["std"],
+        capsize=5,
+    )
+    bars2 = ax.bar(
+        r2[: len(df_gev_uc)],
+        df_gev_uc["mean"],
+        width=bar_width,
+        color="C1",
+        label="100-year return level",
+        yerr=df_gev_uc["std"],
+        capsize=5,
+    )
+
+    ax.set_xticks([r + bar_width / 2 for r in range(len(df_trend_uc))])
+    ax.set_xticklabels(uc_names, rotation=45, fontsize=10)
+    # ax.set_ylabel("Relative contribution")
+    ax.set_xlabel("")
+    ax.grid(alpha=0.2, zorder=3)
+    if legend:
+        ax.legend(loc="upper right")
+
+
 #############################
 # UC breakdown by return level
 #############################
