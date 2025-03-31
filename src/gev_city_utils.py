@@ -4,9 +4,9 @@ import numpy as np
 import pandas as pd
 
 import gev_utils as gevu
+from utils import check_data_length
 from utils import roar_code_path as project_code_path
 from utils import roar_data_path as project_data_path
-from utils import check_data_length
 
 
 ###########################

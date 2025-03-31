@@ -40,7 +40,7 @@ def read_loca(
                 f"{proj_slice}_{stat_name}_{fit_method}_{boot_name}{loca_regrid_str}"
             )
     elif analysis_type == "trends":
-        file_info = f"{proj_slice}{loca_regrid_str}"
+        file_info = f"{proj_slice}_{boot_name}*{loca_regrid_str}"
 
     # Read all
     loca_ssp245_files = glob(
@@ -121,7 +121,7 @@ def read_star(
                 f"{proj_slice}_{stat_name}_{fit_method}_{boot_name}{star_regrid_str}"
             )
     elif analysis_type == "trends":
-        file_info = f"{proj_slice}{star_regrid_str}"
+        file_info = f"{proj_slice}_{boot_name}*{star_regrid_str}"
 
     # Read all files
     star_proj_files = glob(
@@ -185,7 +185,7 @@ def read_gard(
                 f"{proj_slice}_{stat_name}_{fit_method}_{boot_name}{gard_regrid_str}"
             )
     elif analysis_type == "trends":
-        file_info = f"{proj_slice}{gard_regrid_str}"
+        file_info = f"{proj_slice}_{boot_name}*{gard_regrid_str}"
 
     # Read all files
     gard_proj_files = glob(
@@ -444,39 +444,44 @@ def compute_dsc_uc(ds_loca, ds_gard, ds_star, var_name):
     return dsc_uc
 
 
-def ensemble_gev_range(ds, time_sel, var_name):
+def ensemble_fit_range(ds, time_sel, var_name):
     """
-    GEV uncertainty: 95% range
+    Fit uncertainty: 95% range
     """
-    gev_range = ds[var_name].sel(time=time_sel, quantile="q975") - ds[var_name].sel(
-        time=time_sel, quantile="q025"
-    )
-    return gev_range.where(gev_range != 0.0)
+    if time_sel is not None:
+        fit_range = ds[var_name].sel(time=time_sel, quantile="q975") - ds[var_name].sel(
+            time=time_sel, quantile="q025"
+        )
+    else:
+        fit_range = ds[var_name].sel(quantile="q975") - ds[var_name].sel(
+            quantile="q025"
+        )
+    return fit_range.where(fit_range != 0.0)
 
 
-def compute_gev_uc(ds_loca, ds_gard, ds_star, time_sel, var_name):
+def compute_fit_uc(ds_loca, ds_gard, ds_star, time_sel, var_name):
     """
-    Compute internal variability uncertainty
+    Compute fit uncertainty
     """
     # Compute for individual ensembles
-    loca_gev_range = ensemble_gev_range(ds_loca, time_sel, var_name)
-    star_gev_range = ensemble_gev_range(ds_star, time_sel, var_name)
-    gard_gev_range = ensemble_gev_range(ds_gard, time_sel, var_name)
+    loca_fit_range = ensemble_fit_range(ds_loca, time_sel, var_name)
+    star_fit_range = ensemble_fit_range(ds_star, time_sel, var_name)
+    gard_fit_range = ensemble_fit_range(ds_gard, time_sel, var_name)
 
     # Combine and average over ensembles
     # Compute the average 'by hand' to avoid issues with concat memory requirements
-    loca_count = loca_gev_range.count(dim=["gcm", "member", "ssp"])
-    star_count = star_gev_range.count(dim=["gcm", "member", "ssp"])
-    gard_count = gard_gev_range.count(dim=["gcm", "member", "ssp"])
+    loca_count = loca_fit_range.count(dim=["gcm", "member", "ssp"])
+    star_count = star_fit_range.count(dim=["gcm", "member", "ssp"])
+    gard_count = gard_fit_range.count(dim=["gcm", "member", "ssp"])
     total_count = (
         star_count.isel(ensemble=0)
         + loca_count.isel(ensemble=0)
         + gard_count.isel(ensemble=0)
     )
 
-    loca_sum = loca_gev_range.sum(dim=["gcm", "member", "ssp"])
-    star_sum = star_gev_range.sum(dim=["gcm", "member", "ssp"])
-    gard_sum = gard_gev_range.sum(dim=["gcm", "member", "ssp"])
+    loca_sum = loca_fit_range.sum(dim=["gcm", "member", "ssp"])
+    star_sum = star_fit_range.sum(dim=["gcm", "member", "ssp"])
+    gard_sum = gard_fit_range.sum(dim=["gcm", "member", "ssp"])
     total_sum = (
         star_sum.isel(ensemble=0)
         + loca_sum.isel(ensemble=0)
@@ -484,9 +489,9 @@ def compute_gev_uc(ds_loca, ds_gard, ds_star, time_sel, var_name):
     )
 
     # Again filter due to regridding issues
-    gev_uc = (total_sum / total_count).where(total_count == total_count.max())
+    fit_uc = (total_sum / total_count).where(total_count == total_count.max())
 
-    return gev_uc
+    return fit_uc
 
 
 def compute_tot_uc_main(ds_loca, ds_gard, ds_star, var_name):
@@ -515,17 +520,21 @@ def compute_tot_uc_bootstrap(ds_loca, ds_gard, ds_star, time_sel, var_name):
     Computes total uncertainty (full range).
     Need to do via stacking a new dimension since we can't merge all.
     """
+    if time_sel is not None:
+        ds_loca = ds_loca.sel(time=time_sel)
+        ds_star = ds_star.sel(time=time_sel)
+        ds_gard = ds_gard.sel(time=time_sel)
     # Average of upper/lower quantiles
     ds_upper = xr.concat(
         [
             ds_loca[var_name]
-            .sel(time=time_sel, quantile="q975")
+            .sel(quantile="q975")
             .stack(z=("ensemble", "gcm", "ssp", "member")),
             ds_star[var_name]
-            .sel(time=time_sel, quantile="q975")
+            .sel(quantile="q975")
             .stack(z=("ensemble", "gcm", "ssp", "member")),
             ds_gard[var_name]
-            .sel(time=time_sel, quantile="q975")
+            .sel(quantile="q975")
             .stack(z=("ensemble", "gcm", "ssp", "member")),
         ],
         dim="z",
@@ -534,13 +543,13 @@ def compute_tot_uc_bootstrap(ds_loca, ds_gard, ds_star, time_sel, var_name):
     ds_lower = xr.concat(
         [
             ds_loca[var_name]
-            .sel(time=time_sel, quantile="q025")
+            .sel(quantile="q025")
             .stack(z=("ensemble", "gcm", "ssp", "member")),
             ds_star[var_name]
-            .sel(time=time_sel, quantile="q025")
+            .sel(quantile="q025")
             .stack(z=("ensemble", "gcm", "ssp", "member")),
             ds_gard[var_name]
-            .sel(time=time_sel, quantile="q025")
+            .sel(quantile="q025")
             .stack(z=("ensemble", "gcm", "ssp", "member")),
         ],
         dim="z",
@@ -600,12 +609,41 @@ def uc_all(
     # Compute downscaling uncertainty
     dsc_uc = compute_dsc_uc(ds_loca, ds_gard, ds_star, col_name)
 
-    # Compute total uncertainty
-    if analysis_type == "trends":
-        uc_99w = compute_tot_uc_main(ds_loca, ds_gard, ds_star, col_name)
-        uc_99w = uc_99w.rename("uc_99w")
-
     del ds_loca, ds_star, ds_gard  # memory management
+
+    # Fit uncertainty
+    # Read all: bootstrap
+    ds_loca, ds_star, ds_gard = read_all(
+        metric_id=metric_id,
+        grid=grid,
+        regrid_method=regrid_method,
+        proj_slice=proj_slice,
+        hist_slice="1950-2014",
+        stationary=stationary,
+        fit_method=fit_method,
+        bootstrap=True,
+        cols_to_keep=[col_name],
+        analysis_type=analysis_type,
+    )
+
+    # Compute change if desired
+    if analysis_type == "extreme_value":
+        if bool(hist_slice and proj_slice):
+            time_sel = "diff"
+        elif hist_slice is None:
+            time_sel = "proj"
+        elif proj_slice is None:
+            time_sel = "hist"
+    elif analysis_type == "trends":
+        time_sel = None
+
+    # Compute fit uncertainty
+    fit_uc = compute_fit_uc(ds_loca, ds_gard, ds_star, time_sel, col_name)
+    fit_uc = fit_uc.rename("fit_uc")
+
+    # Compute total uncertainty
+    uc_99w = compute_tot_uc_bootstrap(ds_loca, ds_gard, ds_star, time_sel, col_name)
+    uc_99w = uc_99w.rename("uc_99w")
 
     # Merge
     ssp_uc = ssp_uc.rename("ssp_uc")
@@ -621,47 +659,10 @@ def uc_all(
             gcm_uc,
             iv_uc,
             dsc_uc,
+            fit_uc,
+            uc_99w,
         ]
     )
-
-    # Merge again
-    if analysis_type == "trends":
-        uc = xr.merge([uc, uc_99w])
-
-    # Additional GEV uncertainty
-    if analysis_type == "extreme_value":
-        # Read all: bootstrap
-        ds_loca, ds_star, ds_gard = read_all(
-            metric_id=metric_id,
-            grid=grid,
-            regrid_method=regrid_method,
-            proj_slice=proj_slice,
-            hist_slice="1950-2014",
-            stationary=stationary,
-            fit_method=fit_method,
-            bootstrap=True,
-            cols_to_keep=[col_name],
-            analysis_type=analysis_type,
-        )
-
-        # Compute change if desired
-        if bool(hist_slice and proj_slice):
-            time_sel = "diff"
-        elif hist_slice is None:
-            time_sel = "proj"
-        elif proj_slice is None:
-            time_sel = "hist"
-
-        # Compute GEV uncertainty
-        gev_uc = compute_gev_uc(ds_loca, ds_gard, ds_star, time_sel, col_name)
-        gev_uc = gev_uc.rename("gev_uc")
-
-        # Compute total uncertainty
-        uc_99w = compute_tot_uc_bootstrap(ds_loca, ds_gard, ds_star, time_sel, col_name)
-        uc_99w = uc_99w.rename("uc_99w")
-
-        # Merge
-        uc = xr.merge([uc, gev_uc, uc_99w])
 
     if return_metric:
         return uc, ds_loca, ds_star, ds_gard

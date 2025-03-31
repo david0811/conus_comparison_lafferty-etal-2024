@@ -28,67 +28,70 @@ def get_city_timeseries(
     selected city, ensemble, GCMs, SSPs.
     """
     # Read file
-    if ensemble == "LOCA2":
-        files = glob(
-            f"{project_data_path}/metrics/LOCA2/{metric_id}_{gcm}_{member}_{ssp}_*.nc"
-        )
-        ds = xr.concat([xr.open_dataset(file) for file in files], dim="time")
-    else:
-        ds = xr.open_dataset(
-            f"{project_data_path}/metrics/{ensemble}/{metric_id}_{gcm}_{member}_{ssp}.nc"
-        )
+    try:
+        if ensemble == "LOCA2":
+            files = glob(
+                f"{project_data_path}/metrics/LOCA2/{metric_id}_{gcm}_{member}_{ssp}_*.nc"
+            )
+            ds = xr.concat([xr.open_dataset(file) for file in files], dim="time")
+        else:
+            ds = xr.open_dataset(
+                f"{project_data_path}/metrics/{ensemble}/{metric_id}_{gcm}_{member}_{ssp}.nc"
+            )
 
-    # Update GARD GCMs
-    gcm_name = (
-        gcm.replace("canesm5", "CanESM5")
-        .replace("ecearth3", "EC-Earth3")
-        .replace("cesm2", "CESM2-LENS")
-    )
-    # Fix LOCA CESM mapping
-    if ensemble == "LOCA2" and gcm == "CESM2-LENS":
-        member_name = (
-            loca_gard_mapping[member] if member in loca_gard_mapping.keys() else member
-        )
-    else:
-        member_name = member
+        # Update GARD GCMs
+        gcm_name = gcm.replace("canesm5", "CanESM5").replace("cesm2", "CESM2-LENS")
 
-    # Add all info
-    ds = ds.expand_dims(
-        {
-            "gcm": [gcm_name],
-            "member": [member_name],
-            "ssp": [ssp],
-            "ensemble": [ensemble],
-        }
-    )
-    ds["time"] = ds["time"].dt.year
+        # Fix LOCA CESM mapping
+        if ensemble == "LOCA2" and gcm == "CESM2-LENS":
+            member_name = (
+                loca_gard_mapping[member]
+                if member in loca_gard_mapping.keys()
+                else member
+            )
+        else:
+            member_name = member
 
-    # Extract city data
-    lat, lon = city_list[city]
-    if ensemble == "LOCA2":
-        df_loc = (
-            ds.sel(lat=lat, lon=360 + lon, method="nearest")
-            .to_dataframe()
-            .drop(columns=["lat", "lon"])
-            .dropna()
+        # Add all info
+        ds = ds.expand_dims(
+            {
+                "gcm": [gcm_name],
+                "member": [member_name],
+                "ssp": [ssp],
+                "ensemble": [ensemble],
+            }
         )
-    elif ensemble == "STAR-ESDM":
-        df_loc = (
-            ds.sel(latitude=lat, longitude=360 + lon, method="nearest")
-            .to_dataframe()
-            .drop(columns=["latitude", "longitude"])
-            .dropna()
-        )
-    else:
-        df_loc = (
-            ds.sel(lat=lat, lon=lon, method="nearest")
-            .to_dataframe()
-            .dropna()
-            .drop(columns=["lat", "lon"])
-        )
+        ds["time"] = ds["time"].dt.year
 
-    # Return
-    return df_loc.reset_index()
+        # Extract city data
+        lat, lon = city_list[city]
+        if ensemble == "LOCA2":
+            df_loc = (
+                ds.sel(lat=lat, lon=360 + lon, method="nearest")
+                .to_dataframe()
+                .drop(columns=["lat", "lon"])
+                .dropna()
+            )
+        elif ensemble == "STAR-ESDM":
+            df_loc = (
+                ds.sel(latitude=lat, longitude=360 + lon, method="nearest")
+                .to_dataframe()
+                .drop(columns=["latitude", "longitude"])
+                .dropna()
+            )
+        else:
+            df_loc = (
+                ds.sel(lat=lat, lon=lon, method="nearest")
+                .to_dataframe()
+                .dropna()
+                .drop(columns=["lat", "lon"])
+            )
+
+        # Return
+        return df_loc.reset_index()
+    except Exception as e:
+        print(f"Error reading {city} {metric_id} {ensemble} {gcm} {member} {ssp}: {e}")
+        return None
 
 
 def get_city_timeseries_all(
@@ -179,7 +182,7 @@ def get_city_timeseries_all(
 #######################
 # UC for city df
 #######################
-def calculate_df_uc(df, plot_col, calculate_gev_uc=True, n_min_members=5):
+def calculate_df_uc(df, plot_col, n_min_members=5):
     """
     Calculate the uncertainty decomposition based on pd DataFrame.
     """
@@ -203,7 +206,7 @@ def calculate_df_uc(df, plot_col, calculate_gev_uc=True, n_min_members=5):
             on=groupby_cols,
         )
 
-        df_tmp[f"{plot_col}_diff"] = (
+        df_tmp[f"{plot_col}_95range"] = (
             df_tmp[f"{plot_col}_upper"] - df_tmp[f"{plot_col}_lower"]
         )
         return df_tmp
@@ -289,18 +292,14 @@ def calculate_df_uc(df, plot_col, calculate_gev_uc=True, n_min_members=5):
     else:
         uc_99w = df[plot_col].quantile(0.995) - df[plot_col].quantile(0.005)
 
-    # GEV uncertainty if included
-    if calculate_gev_uc:
-        gev_uc = get_quantile_range(
-            df=df_boot,
-            groupby_cols=["gcm", "ensemble", "member", "ssp"],
-            plot_col=plot_col,
-        )
-        gev_uc_mean = gev_uc[f"{plot_col}_diff"].mean()
-        gev_uc_std = gev_uc[f"{plot_col}_diff"].std()
-    else:
-        gev_uc_mean = np.nan
-        gev_uc_std = np.nan
+    # Fit uncertainty if included
+    fit_uc = get_quantile_range(
+        df=df_boot,
+        groupby_cols=["gcm", "ensemble", "member", "ssp"],
+        plot_col=plot_col,
+    )
+    fit_uc_mean = fit_uc[f"{plot_col}_95range"].mean()
+    fit_uc_std = fit_uc[f"{plot_col}_95range"].std()
 
     # Return all
     return pd.DataFrame(
@@ -311,7 +310,7 @@ def calculate_df_uc(df, plot_col, calculate_gev_uc=True, n_min_members=5):
                 "gcm_uc",
                 "iv_uc",
                 "ds_uc",
-                "gev_uc",
+                "fit_uc",
                 "uc_99w",
             ],
             "mean": [
@@ -320,7 +319,7 @@ def calculate_df_uc(df, plot_col, calculate_gev_uc=True, n_min_members=5):
                 gcm_uc_mean,
                 iv_uc_mean,
                 ds_uc_mean,
-                gev_uc_mean,
+                fit_uc_mean,
                 uc_99w,
             ],
             "std": [
@@ -329,7 +328,7 @@ def calculate_df_uc(df, plot_col, calculate_gev_uc=True, n_min_members=5):
                 gcm_uc_std,
                 iv_uc_std,
                 ds_uc_std,
-                gev_uc_std,
+                fit_uc_std,
                 np.nan,
             ],
         }

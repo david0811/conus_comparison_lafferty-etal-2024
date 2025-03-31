@@ -1,6 +1,6 @@
 import numpy as np
 import xarray as xr
-import xarray_regrid
+import xarray_regrid  # noqa: F401
 
 # LOCA grid
 loca_lats = np.linspace(23.90625, 53.46875, 474)
@@ -14,6 +14,12 @@ gard_lons = np.linspace(-124.875, -67.0, 464)
 
 gard_grid = xr.Dataset(coords={"lat": ("lat", gard_lats), "lon": ("lon", gard_lons)})
 
+# STAR-ESDM grid
+star_lats = np.linspace(24.5625, 49.354168, 596)
+star_lons = np.linspace(235.3125, 292.979156, 1385)
+
+star_grid = xr.Dataset(coords={"lat": ("lat", star_lats), "lon": ("lon", star_lons)})
+
 
 def regrid(ds_in, target, method, nan_threshold=0.5):
     """
@@ -24,6 +30,8 @@ def regrid(ds_in, target, method, nan_threshold=0.5):
         ds_target = loca_grid
     elif target == "GARD-LENS":
         ds_target = gard_grid
+    elif target == "STAR-ESDM":
+        ds_target = star_grid
 
     # Make sure lat/lon is named correctly
     if "latitude" in ds_in.dims and "longitude" in ds_in.dims:

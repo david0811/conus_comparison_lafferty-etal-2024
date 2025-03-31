@@ -5,6 +5,7 @@ from glob import glob
 import dask
 import numpy as np
 import xarray as xr
+from numba import jit
 from scipy.optimize import minimize
 from scipy.stats import genextreme as gev
 
@@ -186,19 +187,163 @@ def _gev_parametric_bootstrap_1d_stationary(
         )
 
 
+# @jit(nopython=True)
+# def negative_log_likelihood_numba(params, data, covariate):
+#     shape, loc_intcp, loc_trend, scale = params
+#     loc = loc_intcp + loc_trend * covariate
+#     shape = -shape  # negate scale to match scipy convention
+#     # Manual implementation of GEV logpdf for Numba compatibility
+#     y = 1 + shape * ((data - loc) / scale)
+#     valid_y = y > 0
+#     result = np.zeros_like(data)
+#     result[valid_y] = (
+#         -np.log(scale)
+#         - (1 + 1 / shape) * np.log(y[valid_y])
+#         - y[valid_y] ** (-1 / shape)
+#     )
+#     return -np.sum(result[valid_y])
+
+
+def gev_neg_loglikelihood_with_gradient(params, data, covariate):
+    # Extract parameters
+    xi, mu_0, mu_1, sigma = params
+    xi = -xi  # negate shape to match scipy convention
+
+    # Ensure arrays
+    data = np.asarray(data)
+    covariate = np.asarray(covariate)
+
+    # Enforce sigma > 0
+    if sigma <= 0:
+        return 1e10, np.array([0.0, 0.0, 1.0, 0.0])
+
+    # Calculate location parameter for each data point
+    mu = mu_0 + mu_1 * covariate
+
+    # Standardized data
+    z = (data - mu) / sigma
+
+    # Small number to handle numerical issues around xi ≈ 0
+    eps = 1e-8
+
+    if abs(xi) < eps:  # xi ≈ 0 (Gumbel case)
+        # Gumbel case - negative log-likelihood components
+        exp_neg_z = np.exp(-z)
+
+        # Negative log-likelihood
+        neg_loglik = np.sum(np.log(sigma) + z + exp_neg_z)
+
+        # Gradient of log-likelihood with respect to mu
+        dlldmu = (1 - exp_neg_z) / sigma
+
+        # Gradient of negative log-likelihood with respect to mu_0 and mu_1
+        grad_mu_0 = -np.sum(dlldmu)
+        grad_mu_1 = -np.sum(dlldmu * covariate)
+
+        # Gradient of log-likelihood with respect to sigma
+        dlldsigma = -1 / sigma + z / sigma * (1 - exp_neg_z)
+
+        # Gradient of negative log-likelihood with respect to sigma
+        grad_sigma = -np.sum(dlldsigma)
+
+        # Approximation for gradient of log-likelihood with respect to xi at xi=0
+        # Based on Taylor expansion of the GEV log-likelihood around xi=0
+        dlldxi = 0.5 * (z**2 - z**2 * exp_neg_z)
+
+        # Gradient of negative log-likelihood with respect to xi
+        grad_xi = -np.sum(dlldxi)
+
+    else:  # xi ≠ 0
+        # # Check for valid data in the GEV domain
+        t = 1 + xi * z
+        if np.any(t <= 0):
+            # Return large values to steer optimization away from invalid parameter regions
+            return 1e10, np.array([0.0, 0.0, 0.0, -1.0 if xi > 0 else 1.0])
+
+        # Calculate terms for log-likelihood
+        log_t = np.log(t)
+        t_pow = t ** (-1 / xi)
+
+        # Negative log-likelihood
+        neg_loglik = np.sum(np.log(sigma) + (1 + 1 / xi) * log_t + t_pow)
+
+        # Gradient of log-likelihood with respect to mu
+        dlldmu = (xi / sigma) * ((1 + 1 / xi) / t - t ** (-1 / xi - 1) / xi)
+
+        # Gradient of negative log-likelihood with respect to mu_0 and mu_1
+        grad_mu_0 = -np.sum(dlldmu)
+        grad_mu_1 = -np.sum(dlldmu * covariate)
+
+        # Gradient of log-likelihood with respect to sigma
+        dlldsigma = -1 / sigma + (xi * z / sigma) * (
+            (1 + 1 / xi) / t - t ** (-1 / xi - 1) / xi
+        )
+
+        # Gradient of negative log-likelihood with respect to sigma
+        grad_sigma = -np.sum(dlldsigma)
+
+        # Gradient of log-likelihood with respect to xi
+        dlldxi_term1 = log_t / xi**2
+        dlldxi_term2 = -(1 + 1 / xi) * z / t
+        dlldxi_term3 = -t_pow * log_t / xi**2
+        dlldxi_term4 = t_pow * z / (xi * t)
+
+        dlldxi = dlldxi_term1 + dlldxi_term2 + dlldxi_term3 + dlldxi_term4
+
+        # Gradient of negative log-likelihood with respect to xi
+        grad_xi = -np.sum(dlldxi)
+
+    gradient = np.array([grad_xi, grad_mu_0, grad_mu_1, grad_sigma])
+
+    return neg_loglik, gradient
+
+
+@jit(nopython=True)
+def negative_log_likelihood_numba(params, data, covariate):
+    shape, loc_intcp, loc_trend, scale = params
+    loc = loc_intcp + loc_trend * covariate
+    # Manual implementation of GEV logpdf for Numba compatibility
+    y = 1 + -shape * ((data - loc) / scale)
+    # result = -np.log(scale) - (1 + 1 / -shape) * np.log(y) - y ** (-1 / -shape)
+    return -np.sum(-np.log(scale) - (1 + 1 / -shape) * np.log(y) - y ** (-1 / -shape))
+
+
+# Pre-compile the numba function
+# _ = negative_log_likelihood_numba(
+#     np.array([0.1, 10.0, 0.5, 12.0]),
+#     np.array([15.0, 19.0, 35.0]),
+#     np.array([1.0, 2.0, 3.0]),
+# )
+
+
 def negative_log_likelihood(params, data, covariate):
     shape, loc_intcp, loc_trend, scale = params
     loc = loc_intcp + loc_trend * covariate
     return -gev.logpdf(data, shape, loc, scale).sum()
 
 
+def get_dynamic_bounds(data, covariate):
+    data_min, data_max = np.min(data), np.max(data)
+    data_range = data_max - data_min
+
+    # More appropriate bounds based on data characteristics
+    shape_bounds = (-1.0, 1.0)  # Common range for climate data
+    loc_intcp_bounds = (data_min - 0.2 * data_range, data_max + 0.2 * data_range)
+    scale_bounds = (0.01 * data_range, 0.5 * data_range)
+    trend_bounds = (-data_range / np.ptp(covariate), data_range / np.ptp(covariate))
+
+    return (shape_bounds, loc_intcp_bounds, trend_bounds, scale_bounds)
+
+
 def nonstationary_optimizer(data, covariate, initial_params):
     result = minimize(
-        negative_log_likelihood,
+        negative_log_likelihood_numba,
+        # lambda x: gev_neg_loglikelihood_with_gradient(x, data, covariate),
         initial_params,
         args=(data, covariate),
         method="Nelder-Mead",
-        bounds=((-1, 1), (0, 500), (-10, 10), (0, 100)),
+        bounds=get_dynamic_bounds(data, covariate),
+        # jac=True,
     )
     if result.success:
         shape, loc_intcp, loc_trend, scale = result.x
@@ -213,8 +358,8 @@ def _fit_gev_1d_nonstationary(data, years, fit_method="mle"):
     of negating the shape parameter relative to other sources.
     """
 
-    # Return NaN if all Nans
-    if np.isnan(data).all():
+    # Return NaN if all Nans or zeros
+    if np.isnan(data).all() or (data == 0.0).all():
         return (np.nan, np.nan, np.nan, np.nan)
 
     # Check length
@@ -227,13 +372,19 @@ def _fit_gev_1d_nonstationary(data, years, fit_method="mle"):
     if fit_method == "mle":
         # Initial params from L-moments
         loc, scale, shape = pargev_numba(samlmom3_numba(data))
+        # Simple linear regression for location trend
+        # A = np.vstack([np.ones_like(np.arange(len(data))), np.arange(len(data))]).T
+        # loc_intcp, loc_trend = np.linalg.lstsq(A, data, rcond=None)[0]
         initial_params = [shape, loc, 0.0, scale]
         # Fit
-        return nonstationary_optimizer(
-            data=data,
-            covariate=np.arange(len(data)),
-            initial_params=initial_params,
-        )
+        try:
+            return nonstationary_optimizer(
+                data=data,
+                covariate=np.arange(len(data)),
+                initial_params=initial_params,
+            )
+        except Exception:
+            return (np.nan, np.nan, np.nan, np.nan)
     elif fit_method == "sdfc":
         law_ns = sd.GEV()
         for i in range(100):

@@ -28,6 +28,8 @@ unit_labels = {
     "max_pr": "[mm]",
     "min_tasmin": "[C]",
     "avg_tas": "\n[C/decade]",
+    "avg_tasmin": "\n[C/decade]",
+    "avg_tasmax": "\n[C/decade]",
     "sum_pr": "\n[mm/decade]",
     "sum_cdd": "\n[degree days/decade]",
     "sum_hdd": "\n[degree days/decade]",
@@ -39,6 +41,8 @@ title_labels = {
     "max_pr": "Annual maximum 1-day precipitation",
     "min_tasmin": "Annual minimum temperature",
     "avg_tas": "Annual average temperature",
+    "avg_tasmin": "Annual average daily minimum temperature",
+    "avg_tasmax": "Annual average daily maximum temperature",
     "sum_pr": "Annual total precipitation",
     "sum_cdd": "Annual total cooling degree days",
     "sum_hdd": "Annual total heating degree days",
@@ -58,7 +62,7 @@ uc_labels = {
     "gcm_uc": "Response uncertainty",
     "iv_uc": "Internal variability",
     "dsc_uc": "Downscaling uncertainty",
-    "gev_uc": "GEV fit uncertainty",
+    "fit_uc": "Fit uncertainty",
 }
 
 uc_colors = {
@@ -66,7 +70,7 @@ uc_colors = {
     "gcm_uc": "#33BBEE",
     "iv_uc": "#009988",
     "dsc_uc": "#EE3377",
-    "gev_uc": "#CC3311",
+    "fit_uc": "#CC3311",
 }
 
 uc_markers = {
@@ -74,7 +78,7 @@ uc_markers = {
     "gcm_uc": "^",
     "iv_uc": "o",
     "dsc_uc": "D",
-    "gev_uc": "s",
+    "fit_uc": "s",
 }
 
 subfigure_labels = ["a)", "b)", "c)", "d)", "e)", "f)", "g)", "h)", "i)"]
@@ -119,20 +123,18 @@ def plot_uc_map(
     if norm is None:
         pass
     elif norm == "relative":
-        uc_tot = uc["ssp_uc"] + uc["gcm_uc"] + uc["iv_uc"] + uc["dsc_uc"] + uc["gev_uc"]
+        uc_tot = uc["ssp_uc"] + uc["gcm_uc"] + uc["iv_uc"] + uc["dsc_uc"] + uc["fit_uc"]
         uc["ssp_uc"] = uc["ssp_uc"] / uc_tot
         uc["gcm_uc"] = uc["gcm_uc"] / uc_tot
         uc["iv_uc"] = uc["iv_uc"] / uc_tot
         uc["dsc_uc"] = uc["dsc_uc"] / uc_tot
-        if analysis_type == "extreme_value":
-            uc["gev_uc"] = uc["gev_uc"] / uc_tot
+        uc["fit_uc"] = uc["fit_uc"] / uc_tot
     else:
         uc["ssp_uc"] = uc["ssp_uc"] / uc[norm]
         uc["gcm_uc"] = uc["gcm_uc"] / uc[norm]
         uc["iv_uc"] = uc["iv_uc"] / uc[norm]
         uc["dsc_uc"] = uc["dsc_uc"] / uc[norm]
-        if analysis_type == "extreme_value":
-            uc["gev_uc"] = uc["gev_uc"] / uc[norm]
+        uc["fit_uc"] = uc["fit_uc"] / uc[norm]
 
     title_labels = {
         "max_tasmax": f"{return_period} year return level: annual maximum temperature",
@@ -141,6 +143,8 @@ def plot_uc_map(
         "max_pr": f"{return_period} year return level: annual 1-day maximum precipitation",
         "min_tasmin": f"{return_period} year return level: annual minimum temperature",
         "avg_tas": "Annual average temperature",
+        "avg_tasmin": "Annual average daily minimum temperature",
+        "avg_tasmax": "Annual average daily maximum temperature",
         "sum_pr": "Annual total precipitation",
         "sum_cdd": "Annual total cooling degree days",
         "sum_hdd": "Annual total heating degree days",
@@ -153,12 +157,12 @@ def plot_uc_map(
     }
 
     if axs is None:
-        ncols = 6 if analysis_type == "extreme_value" else 5
-        width = 14 if analysis_type == "extreme_value" else 11
+        # ncols = 6 if analysis_type == "extreme_value" else 5
+        # width = 14 if analysis_type == "extreme_value" else 11
         fig, axs = plt.subplots(
             1,
-            ncols,
-            figsize=(width, 3),
+            6,
+            figsize=(14, 3),
             layout="constrained",
             subplot_kw=dict(projection=ccrs.LambertConformal()),
         )
@@ -169,9 +173,13 @@ def plot_uc_map(
 
     # Get vmin, vmax to format nicely for 11 levels
     nlevels = 10
-    if metric_id == "avg_tas":  # values are much smaller here
-        vmin = np.round(uc[norm].min().to_numpy(), decimals=0)
-        vmax = np.round(uc[norm].max().to_numpy(), decimals=0)
+    if metric_id in [
+        "avg_tas",
+        "avg_tasmin",
+        "avg_tasmax",
+    ]:  # values are much smaller here
+        vmin = np.round(uc[norm].min().to_numpy(), decimals=1)
+        vmax = np.round(uc[norm].max().to_numpy(), decimals=1)
     else:
         vmin = np.round(uc[norm].min().to_numpy(), decimals=0)
         raw_range = uc[norm].quantile(0.95).to_numpy() - vmin
@@ -222,8 +230,6 @@ def plot_uc_map(
 
     # Loop through uncertainties
     for axi, uc_type in enumerate(list(uc_labels.keys())):
-        if analysis_type == "trend" and uc_type == "gev_uc":
-            continue
         ax = axs[axi + 1]
         p = (scale_factor * uc[uc_type]).plot(
             ax=ax,
@@ -408,7 +414,7 @@ def plot_city_results(
     df = pd.read_csv(
         f"{project_data_path}/extreme_value/cities/original_grid/freq/{city}_{metric_id}_{hist_slice}_{proj_slice}_{fit_method}_{stationary}_nboot{n_boot}{sample_str}.csv"
     )
-    df_uc = sacu.calculate_df_uc(df, plot_col, True)
+    df_uc = sacu.calculate_df_uc(df, plot_col)
     df = df.set_index(["ensemble", "gcm", "member", "ssp"])
 
     # Make figure if needed
@@ -435,7 +441,7 @@ def plot_city_results(
         "Response \n uncertainty",
         "Internal \n variability",
         "Downscaling \n uncertainty",
-        "GEV fit \n uncertainty",
+        "Fit \n uncertainty",
     ]
 
     df_uc[df_uc["uncertainty_type"] != "ssp_uc"].plot.bar(
@@ -633,13 +639,21 @@ def plot_city_results(
         legend.set_zorder(10)
 
 
-def plot_uc_bar(df_trend_uc, df_gev_uc, ax, bar_width=0.35, legend=False):
+def plot_uc_bar(
+    df_trend_uc,
+    df_gev_uc,
+    ax,
+    bar_width=0.35,
+    legend=False,
+    trend_label="Trend in annual average",
+    gev_label="100-year 1-day return level",
+):
     uc_names = [
         "Scenario \n uncertainty",
         "Response \n uncertainty",
         "Internal \n variability",
         "Downscaling \n uncertainty",
-        "GEV fit \n uncertainty",
+        "Fit \n uncertainty",
     ]
 
     # Normalize by uc_99w
@@ -656,20 +670,20 @@ def plot_uc_bar(df_trend_uc, df_gev_uc, ax, bar_width=0.35, legend=False):
 
     # Create the grouped bar chart
     bars1 = ax.bar(
-        r1[: len(df_trend_uc)],
+        r1,
         df_trend_uc["mean"],
         width=bar_width,
-        color="C0",
-        label="Trend (bulk metric)",
+        color="#d95f02",
+        label=trend_label,
         yerr=df_trend_uc["std"],
         capsize=5,
     )
     bars2 = ax.bar(
-        r2[: len(df_gev_uc)],
+        r2,
         df_gev_uc["mean"],
         width=bar_width,
-        color="C1",
-        label="100-year return level",
+        color="#7570b3",
+        label=gev_label,
         yerr=df_gev_uc["std"],
         capsize=5,
     )
@@ -680,12 +694,12 @@ def plot_uc_bar(df_trend_uc, df_gev_uc, ax, bar_width=0.35, legend=False):
     ax.set_xlabel("")
     ax.grid(alpha=0.2, zorder=3)
     if legend:
-        ax.legend(loc="upper right")
+        ax.legend(loc="upper right", fontsize=10)
 
 
-#############################
+################################
 # UC breakdown by return level
-#############################
+################################
 
 
 def plot_uc_rls(
@@ -698,22 +712,29 @@ def plot_uc_rls(
     regrid_method,
     total_uc="uc_99w",
     return_periods=[10, 25, 50, 100],
+    metric_ids=gev_metric_ids[:3],
     title=None,
     store_path=None,
+    axs=None,
+    fig=None,
+    legend=True,
+    idm_start=0,
+    return_legend=False,
+    y_title=1.05,
 ):
     # Make figure
-    fig, axs = plt.subplots(
-        2,
-        3,
-        figsize=(11, 7),
-        sharey=True,
-        gridspec_kw={"wspace": 0.07},
-        layout="constrained",
-    )
-    axs = axs.flatten()
+    if axs is None:
+        fig, axs = plt.subplots(
+            1,
+            3,
+            figsize=(11, 4.5),
+            sharey=True,
+            gridspec_kw={"wspace": 0.1},
+            layout="constrained",
+        )
 
     # Loop through metrics
-    for idm, metric_id in enumerate(gev_metric_ids):
+    for idm, metric_id in enumerate(metric_ids):
         # Read all return levels
         ds = []
         for return_period in return_periods:
@@ -745,7 +766,7 @@ def plot_uc_rls(
 
         # Plot total UC first with lower alpha
         ax1 = axs[idm].twinx()
-        ax1.plot(df.index, df_total_uc, lw=3, color="black", alpha=0.5)
+        ax1.plot(df.index, df_total_uc, lw=2, color="black", alpha=0.5)
         ax1.scatter(df.index, df_total_uc, s=50, marker="H", color="black", alpha=0.5)
         ax1.set_ylabel(
             f"Total uncertainty {unit_labels[metric_id]}", rotation=-90, va="bottom"
@@ -767,26 +788,21 @@ def plot_uc_rls(
         # Tidy
         ax.grid(alpha=0.5)
         ax.set_xticks(return_periods)
-        ax.set_title(f"{subfigure_labels[idm]} {title_labels[metric_id]}")
+        title_str = (
+            title_labels[metric_id]
+            # .replace("minimum", "minimum\n")
+            # .replace("maximum", "maximum\n")
+        )
+        ax.set_title(
+            f"{subfigure_labels[idm + idm_start]} {title_str}", fontstyle="italic"
+        )
+        ax.set_xlabel("Return period")
+        ax.set_xticklabels(return_periods)
 
     # Tidy
     axs[0].set_ylabel("Relative contribution")
-    axs[3].set_ylabel("Relative contribution")
 
-    axs[2].set_xlabel("Return period")
-    axs[3].set_xlabel("Return period")
-    axs[4].set_xlabel("Return period")
-
-    axs[0].set_xticklabels([])
-    axs[1].set_xticklabels([])
-
-    axs[2].set_xticklabels(return_periods)
-    axs[3].set_xticklabels(return_periods)
-    axs[4].set_xticklabels(return_periods)
-
-    # Legend plot
-    axs[-1].axis("off")
-
+    # Add legend below bottom row
     legend_elements = [
         Line2D(
             [0],
@@ -810,15 +826,25 @@ def plot_uc_rls(
         )
         for uc_type in uc_labels
     ]
-
-    axs[-1].legend(handles=legend_elements, loc="center", fontsize=12)
+    if legend:
+        fig.legend(
+            handles=legend_elements,
+            loc="outside lower center",
+            fontsize=12,
+            ncol=2,
+            borderaxespad=0.25,
+        )
 
     # Add title
     if title is not None:
-        fig.suptitle(title, fontweight="bold", y=1.05)
+        fig.suptitle(title, fontweight="bold", y=y_title)
 
     # Store
     if store_path is not None:
         fig.savefig(f"../figs/{store_path}.pdf", bbox_inches="tight")
 
-    plt.show()
+    if axs is None:
+        plt.show()
+
+    if return_legend:
+        return legend_elements

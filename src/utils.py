@@ -6,7 +6,14 @@ import pandas as pd
 # Main metrics
 ################
 gev_metric_ids = ["max_tasmax", "min_tasmin", "max_pr", "max_cdd", "max_hdd"]
-trend_metric_ids = ["avg_tas", "avg_tasmax", "avg_tasmin", "sum_pr", "sum_hdd", "sum_cdd"]
+trend_metric_ids = [
+    "avg_tas",
+    "avg_tasmax",
+    "avg_tasmin",
+    "sum_pr",
+    "sum_hdd",
+    "sum_cdd",
+]
 
 ################
 # Climate info

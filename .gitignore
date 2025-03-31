@@ -3,8 +3,8 @@
 .ipynb_checkpoints/
 __pycache__/
 data/
-scripts/logs/ 
-scripts/old/
+scripts/logs/* 
+scripts/old/*
 figs/
 .vscode
 *.egg-info/

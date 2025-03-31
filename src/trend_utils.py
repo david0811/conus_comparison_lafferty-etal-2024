@@ -4,9 +4,9 @@ from glob import glob
 
 import dask
 import numpy as np
-from sklearn.linear_model import LinearRegression
 import pandas as pd
 import xarray as xr
+from sklearn.linear_model import LinearRegression
 
 from utils import check_data_length, loca_gard_mapping
 from utils import roar_code_path as project_code_path
@@ -18,7 +18,7 @@ def linear_regression(X, y, expected_length=None):
     """
     Fit linear regression to data.
     """
-    if np.isnan(y).all():
+    if np.isnan(y).all() or np.all(y == 0.0):
         return np.array([np.nan, np.nan])
 
     # Check length of non-NaNs
@@ -27,15 +27,15 @@ def linear_regression(X, y, expected_length=None):
         assert non_nans == expected_length, (
             f"data length is {non_nans}, expected {expected_length}"
         )
-    # Should be no zeros in data, this was happening with some CDD, HDD instead of NaN
-    assert np.sum(y == 0.0) < 5, "At least 5 zeros in data"
 
     return np.polyfit(X, y, 1)
 
 
-def linear_regression_bootstrap(X, y, n_boot, expected_length=None, return_samples=False):
-    # Check 
-    if np.isnan(y).all():
+def linear_regression_bootstrap(
+    X, y, n_boot, expected_length=None, return_samples=False
+):
+    # Check
+    if np.isnan(y).all() or np.all(y == 0.0):
         return np.array([[np.nan, np.nan], [np.nan, np.nan]])
 
     # Check length of non-NaNs
@@ -44,8 +44,6 @@ def linear_regression_bootstrap(X, y, n_boot, expected_length=None, return_sampl
         assert non_nans == expected_length, (
             f"data length is {non_nans}, expected {expected_length}"
         )
-    # Should be no zeros in data, this was happening with some CDD, HDD instead of NaN
-    assert np.sum(y == 0.0) < 5, "At least 5 zeros in data"
 
     # Fit original model
     slope, intercept = np.polyfit(X, y, 1)
@@ -53,20 +51,27 @@ def linear_regression_bootstrap(X, y, n_boot, expected_length=None, return_sampl
     # Bootstrap the residuals
     boot_slope = np.zeros(n_boot)
     boot_intercept = np.zeros(n_boot)
-    predictions = (intercept + slope * X)
+    predictions = intercept + slope * X
     residuals = y - predictions
-    boot_sample = np.random.choice(residuals, size=(len(residuals), n_boot), replace=True)
+    boot_sample = np.random.choice(
+        residuals, size=(len(residuals), n_boot), replace=True
+    )
     # Vectorize regression with sklearn
     y_matrix = np.tile(y, (n_boot, 1)).T + boot_sample
     lr = LinearRegression(fit_intercept=True)
     lr.fit(X.reshape(-1, 1), y_matrix)
     boot_slope, boot_intercept = lr.coef_.T[0], lr.intercept_
-    
+
     # Return
     if return_samples:
         return boot_slope, boot_intercept
     else:
-        return np.array([np.quantile(boot_slope, [0.025, 0.975]), np.quantile(boot_intercept, [0.025, 0.975])])
+        return np.array(
+            [
+                np.quantile(boot_slope, [0.025, 0.975]),
+                np.quantile(boot_intercept, [0.025, 0.975]),
+            ]
+        )
 
 
 # Fit trend for single output
@@ -166,9 +171,11 @@ def trend_fit_single(
                 output_dtypes=[float],
                 dask_gufunc_kwargs=dask_gufunc_kwargs,
             )
-        
+
         # Gather results
-        ds_main = xr.Dataset({"intcp": main_result.sel(coef=1), "slope": main_result.sel(coef=0)})
+        ds_main = xr.Dataset(
+            {"intcp": main_result.sel(coef=1), "slope": main_result.sel(coef=0)}
+        )
         if return_samples:
             ds_main = ds_main.assign_coords({"n_boot": np.arange(n_boot)})
         else:
@@ -176,10 +183,20 @@ def trend_fit_single(
 
         if n_boot is not None:
             if return_samples:
-                ds_boot = xr.Dataset({"intcp": bootstrap_result.sel(coef=1), "slope": bootstrap_result.sel(coef=0)})
+                ds_boot = xr.Dataset(
+                    {
+                        "intcp": bootstrap_result.sel(coef=1),
+                        "slope": bootstrap_result.sel(coef=0),
+                    }
+                )
                 ds_boot = ds_boot.assign_coords({"n_boot": np.arange(n_boot)})
             else:
-                ds_boot = xr.Dataset({"intcp": bootstrap_result.sel(coef=1), "slope": bootstrap_result.sel(coef=0)})
+                ds_boot = xr.Dataset(
+                    {
+                        "intcp": bootstrap_result.sel(coef=1),
+                        "slope": bootstrap_result.sel(coef=0),
+                    }
+                )
                 ds_boot = ds_boot.assign_coords({"quantile": ["q025", "q975"]})
 
         # Merge
@@ -231,9 +248,10 @@ def trend_fit_single(
         ) as f:
             f.write(str(e))
 
-###############################
+
+##################################
 # Trend fit across whole ensemble
-###############################
+##################################
 def get_unique_loca_metrics(metric_id):
     """
     Return unique LOCA2 combinations for given metric_id.
@@ -346,7 +364,9 @@ def trend_fit_all(metric_id, n_boot=None, future_years=[2015, 2100], hist_years=
 #########################
 # Fit trend to city
 #########################
-def trend_fit_city(metric_id, city, years=[2015, 2100]):
+def trend_fit_city(
+    metric_id, city, n_boot=1000, years=[2015, 2100], return_samples=True
+):
     """
     Fits a trend to the entire meta-ensemble of outputs.
     """
@@ -355,7 +375,10 @@ def trend_fit_city(metric_id, city, years=[2015, 2100]):
 
     # Check if done
     year_str = f"{years[0]}-{years[1]}"
-    if os.path.exists(f"{store_path}/{city}_{metric_id}_{year_str}.csv"):
+    sample_str = "_samples" if return_samples else ""
+    boot_str = f"_nboot{n_boot}" if n_boot is not None else ""
+    store_name = f"{city}_{metric_id}_{year_str}{boot_str}{sample_str}.csv"
+    if os.path.exists(f"{store_path}/{store_name}"):
         return None
 
     # Read city data
@@ -385,23 +408,75 @@ def trend_fit_city(metric_id, city, years=[2015, 2100]):
 
         # Apply linear regression
         try:
+            # Expected length
             expected_length = years[1] - years[0] + 1
-            slope, intercept = linear_regression(X, y, expected_length)
-            results.append(
-                {
-                    "gcm": name[0],
-                    "member": name[1],
-                    "ssp": name[2],
-                    "ensemble": name[3],
-                    "slope": slope,
-                    "intercept": intercept,
-                }
-            )
+
+            # Main
+            if n_boot is None:
+                slope, intercept = linear_regression(
+                    X, y, expected_length=expected_length
+                )
+            else:
+                slopes, intercepts = linear_regression_bootstrap(
+                    X,
+                    y,
+                    n_boot=n_boot,
+                    expected_length=expected_length,
+                    return_samples=return_samples,
+                )
+                slope_main, intercept_main = linear_regression(
+                    X, y, expected_length=expected_length
+                )
+
+            # Append
+            if n_boot is None:
+                results.append(
+                    pd.DataFrame(
+                        {
+                            "gcm": [name[0]],
+                            "member": [name[1]],
+                            "ssp": [name[2]],
+                            "ensemble": [name[3]],
+                            "n_boot": ["main"],
+                            "slope": [slope],
+                            "intercept": [intercept],
+                        },
+                    )
+                )
+            else:
+                if return_samples:
+                    results.append(
+                        pd.DataFrame(
+                            {
+                                "gcm": name[0],
+                                "member": name[1],
+                                "ssp": name[2],
+                                "ensemble": name[3],
+                                "n_boot": np.append(np.arange(n_boot), "main"),
+                                "slope": np.append(slopes, slope_main),
+                                "intercept": np.append(intercepts, intercept_main),
+                            },
+                        )
+                    )
+                else:
+                    results.append(
+                        pd.DataFrame(
+                            {
+                                "gcm": name[0],
+                                "member": name[1],
+                                "ssp": name[2],
+                                "ensemble": name[3],
+                                "quantile": np.append(["q025", "q975"], "main"),
+                                "slope": np.append(slopes, slope_main),
+                                "intercept": np.append(intercepts, intercept_main),
+                            },
+                        )
+                    )
         except Exception as e:
             print(f"Error for {city} {metric_id} {name}: {e}")
 
     # Convert results to DataFrame
-    results_df = pd.DataFrame(results)
+    results_df = pd.concat(results)
 
     # Store
-    results_df.to_csv(f"{store_path}/{city}_{metric_id}_{year_str}.csv", index=False)
+    results_df.to_csv(f"{store_path}/{store_name}", index=False)
