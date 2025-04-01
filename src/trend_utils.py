@@ -11,6 +11,7 @@ from sklearn.linear_model import LinearRegression
 from utils import check_data_length, loca_gard_mapping
 from utils import roar_code_path as project_code_path
 from utils import roar_data_path as project_data_path
+from utils import get_unique_loca_metrics
 
 
 # Linear regression function
@@ -252,28 +253,6 @@ def trend_fit_single(
 ##################################
 # Trend fit across whole ensemble
 ##################################
-def get_unique_loca_metrics(metric_id):
-    """
-    Return unique LOCA2 combinations for given metric_id.
-    """
-    # Read all
-    files = glob(f"{project_data_path}/metrics/LOCA2/{metric_id}_*")
-
-    # Extract all info
-    df = pd.DataFrame(columns=["gcm", "member", "ssp"])
-    for file in files:
-        _, _, gcm, member, ssp, _ = file.split("/")[-1].split("_")
-        df = pd.concat(
-            [
-                df,
-                pd.DataFrame({"gcm": gcm, "member": member, "ssp": ssp}, index=[0]),
-            ]
-        )
-
-    # Return unique
-    return df.drop_duplicates().reset_index()
-
-
 def trend_fit_all(metric_id, n_boot=None, future_years=[2015, 2100], hist_years=None):
     """
     Fits a trend to the entire meta-ensemble of outputs.

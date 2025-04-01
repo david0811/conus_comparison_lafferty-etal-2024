@@ -33,6 +33,10 @@ def transform_r_to_xr(
     lons,
     lon_name,
 ):
+    """
+    Takes the output from the R non-staionary GEV fitting routine
+    and transforms it into an xarray dataset.
+    """
     # Gather
     quantiles = ["main", "q025", "q975"]
 
@@ -109,6 +113,10 @@ def fit_mle_nonstat_R(
     periods_for_level=[10, 25, 50, 100],
     return_period_years=[1975, 2000, 2025, 2050, 2075, 2100],
 ):
+    """
+    Fits a non-stationary GEV using the maximum likelihood estimation method.
+    Note this function calls R externally and relies on the extRemes package.
+    """
     # Check if done
     agg_id, var_id = metric_id.split("_")
     gcm_name, member_name = map_store_names(ensemble, gcm, member)

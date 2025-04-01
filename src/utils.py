@@ -93,9 +93,9 @@ def check_data_length(data, ensemble, gcm, ssp, years):
     if (
         ensemble == "GARD-LENS"
         and gcm in ["ecearth3", "EC-Earth3"]
-        and ssp == "historical"
+        and years[0] == 1950
     ):
-        expected_length = 2014 - 1970 + 1  # GARD-LENS EC-Earth3
+        expected_length = years[1] - 1970 + 1  # GARD-LENS EC-Earth3
         assert len(data) == expected_length, (
             f"ds length is {len(data)}, expected {expected_length}"
         )

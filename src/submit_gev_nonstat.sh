@@ -2,9 +2,9 @@
 #SBATCH --output=../scripts/logs/jobs/%x.log
 #SBATCH --error=../scripts/logs/jobs/%x.err
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=4GB
-#SBATCH --time=04:00:00
+#SBATCH --cpus-per-task=5
+#SBATCH --mem=10GB
+#SBATCH --time=01:00:00
 #SBATCH --account=open
 
 # Code directory
@@ -30,6 +30,7 @@ echo "METRIC_ID: $METRIC_ID"
 module load r/4.4.2
 
 # Run
-uv run src/fit_gev_nonstat_mle_R.py --ensemble $ENSEMBLE --gcm $GCM --member $MEMBER --ssp $SSP --metric_id $METRIC_ID
+# uv run src/fit_gev_nonstat_mle_R.py --ensemble $ENSEMBLE --gcm $GCM --member $MEMBER --ssp $SSP --metric_id $METRIC_ID
+uv run src/fit_gev_nonstat_mle.py --ensemble $ENSEMBLE --gcm $GCM --member $MEMBER --ssp $SSP --metric_id $METRIC_ID
 
 echo "Job completed at $(date)"
