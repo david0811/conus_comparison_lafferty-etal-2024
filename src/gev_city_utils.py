@@ -4,6 +4,8 @@ import numpy as np
 import pandas as pd
 
 import gev_utils as gevu
+import gev_stat_utils as gevsu
+import gev_nonstat_utils as gevnsu
 from utils import check_data_length
 from utils import roar_code_path as project_code_path
 from utils import roar_data_path as project_data_path
@@ -95,24 +97,25 @@ def fit_gev_city(
             proj_data, ensemble, gcm, ssp, proj_slice
         )
     else:
-        _ = check_data_length(data, ensemble, gcm, ssp, years)
+        expected_length = check_data_length(data, ensemble, gcm, ssp, years)
+        starting_year = 1970 if expected_length == 131 else 1950
 
     # Do the fit
     if stationary:
-        hist_params = gevu._fit_gev_1d_stationary(
+        hist_params = gevsu._fit_gev_1d_stationary(
             data=scalar * hist_data,
             expected_length=expected_length_hist,
             fit_method=fit_method,
         )
-        proj_params = gevu._fit_gev_1d_stationary(
+        proj_params = gevsu._fit_gev_1d_stationary(
             data=scalar * proj_data,
             expected_length=expected_length_proj,
             fit_method=fit_method,
         )
     else:
-        params = gevu._fit_gev_1d_nonstationary(
+        params = gevnsu._fit_gev_1d_nonstationary(
             data=scalar * data,
-            years=years,
+            expected_length=expected_length,
             fit_method=fit_method,
         )
 
@@ -120,7 +123,7 @@ def fit_gev_city(
     if bootstrap == "parametric":
         if stationary:
             bootstrap_params_hist, bootstrap_rls_hist = (
-                gevu._gev_parametric_bootstrap_1d_stationary(
+                gevsu._gev_parametric_bootstrap_1d_stationary(
                     loc=hist_params[0],
                     scale=hist_params[1],
                     shape=hist_params[2],
@@ -132,7 +135,7 @@ def fit_gev_city(
                 )
             )
             bootstrap_params_proj, bootstrap_rls_proj = (
-                gevu._gev_parametric_bootstrap_1d_stationary(
+                gevsu._gev_parametric_bootstrap_1d_stationary(
                     loc=proj_params[0],
                     scale=proj_params[1],
                     shape=proj_params[2],
@@ -145,9 +148,10 @@ def fit_gev_city(
             )
         else:
             bootstrap_params, bootstrap_rls, bootstrap_rl_diffs, bootstrap_rl_chfcs = (
-                gevu._gev_parametric_bootstrap_1d_nonstationary(
+                gevnsu._gev_parametric_bootstrap_1d_nonstationary(
                     params=params,
-                    years=years,
+                    expected_length=expected_length,
+                    starting_year=starting_year,
                     n_data=len(data),
                     n_boot=n_boot,
                     fit_method=fit_method,

@@ -21,12 +21,14 @@ ssp_labels = {
     "ssp370": "SSP3-7.0",
     "ssp585": "SSP5-8.5",
 }
-unit_labels = {
+gev_labels = {
     "max_tasmax": "[C]",
     "max_cdd": "[degree days]",
     "max_hdd": "[degree days]",
     "max_pr": "[mm]",
     "min_tasmin": "[C]",
+}
+trend_labels = {
     "avg_tas": "\n[C/decade]",
     "avg_tasmin": "\n[C/decade]",
     "avg_tasmax": "\n[C/decade]",
@@ -34,6 +36,15 @@ unit_labels = {
     "sum_cdd": "\n[degree days/decade]",
     "sum_hdd": "\n[degree days/decade]",
 }
+avg_labels = {
+    "avg_tas": "[C]",
+    "avg_tasmin": "[C]",
+    "avg_tasmax": "[C]",
+    "sum_pr": "[mm]",
+    "sum_cdd": "[degree days]",
+    "sum_hdd": "[degree days]",
+}
+
 title_labels = {
     "max_tasmax": "Annual maximum temperature",
     "max_cdd": "Annual maximum 1-day CDD",
@@ -170,8 +181,13 @@ def plot_uc_map(
         )
 
     # Plot details
-    if analysis_type == "trend":
+    if analysis_type == "trends":
         uc[norm] = uc[norm] * 10  # decadal trends
+        unit_labels = trend_labels
+    elif analysis_type == "averages":
+        unit_labels = avg_labels
+    elif analysis_type == "extreme_value":
+        unit_labels = gev_labels
 
     # Get vmin, vmax to format nicely for 11 levels
     nlevels = 10
@@ -233,6 +249,8 @@ def plot_uc_map(
 
     # Loop through uncertainties
     for axi, uc_type in enumerate(list(uc_labels.keys())):
+        if analysis_type == "averages" and uc_type == "fit_uc":
+            continue
         ax = axs[axi + 1]
         p = (scale_factor * uc[uc_type]).plot(
             ax=ax,
@@ -432,7 +450,7 @@ def plot_city_results(
         axs[0].set_title(title)
 
     # Get details
-    units = unit_labels[metric_id]
+    units = gev_labels[metric_id]
 
     ############################
     # UC
@@ -642,15 +660,13 @@ def plot_city_results(
         legend.set_zorder(10)
 
 
-def plot_uc_bar(
-    df_trend_uc,
-    df_gev_uc,
+def plot_uc_bars(
+    dfs,
     ax,
-    bar_width=0.35,
+    labels,
     legend=False,
-    trend_label="Trend in annual average",
-    gev_label="100-year 1-day return level",
 ):
+    # Get uc names
     uc_names = [
         "Scenario \n uncertainty",
         "Response \n uncertainty",
@@ -659,41 +675,39 @@ def plot_uc_bar(
         "Fit \n uncertainty",
     ]
 
+    n = len(dfs)
+
     # Normalize by uc_99w
-    df_trend_uc = df_trend_uc.apply(lambda x: x / df_trend_uc.loc["uc_99w"]["mean"])
-    df_gev_uc = df_gev_uc.apply(lambda x: x / df_gev_uc.loc["uc_99w"]["mean"])
+    for i in range(n):
+        if "uc_99w" not in dfs[i].index:
+            dfs[i] = dfs[i].set_index("uncertainty_type")
+        dfs[i] = dfs[i].apply(lambda x: x / dfs[i].loc["uc_99w"]["mean"])
 
     # Make sure only one SSP type
-    df_trend_uc = df_trend_uc.drop(["ssp_uc", "uc_99w"])
-    df_gev_uc = df_gev_uc.drop(["ssp_uc", "uc_99w"])
+    for i in range(n):
+        dfs[i] = dfs[i].drop(["ssp_uc", "uc_99w"])
 
-    # Set positions of the bars on X axis
-    r1 = np.arange(len(df_trend_uc))
-    r2 = [x + bar_width for x in r1]
+    # Get bar positioning
+    bar_width = 1 / (n * 1.5)
+    positions = [np.arange(len(dfs[i])) + i * bar_width for i in range(len(dfs))]
+    # print(positions)
 
     # Create the grouped bar chart
-    bars1 = ax.bar(
-        r1,
-        df_trend_uc["mean"],
-        width=bar_width,
-        color="#d95f02",
-        label=trend_label,
-        yerr=df_trend_uc["std"],
-        capsize=5,
-    )
-    bars2 = ax.bar(
-        r2,
-        df_gev_uc["mean"],
-        width=bar_width,
-        color="#7570b3",
-        label=gev_label,
-        yerr=df_gev_uc["std"],
-        capsize=5,
-    )
+    for i, df in enumerate(dfs):
+        bars = ax.bar(
+            positions[i],
+            df["mean"],
+            width=bar_width,
+            color=f"C{i}",
+            label=labels[i],
+            yerr=df["std"],
+            capsize=3,
+            align="center",
+        )
 
-    ax.set_xticks([r + bar_width / 2 for r in range(len(df_trend_uc))])
+    ax.set_xticks((positions[0] + positions[-1]) / 2)
     ax.set_xticklabels(uc_names, rotation=45, fontsize=10)
-    # ax.set_ylabel("Relative contribution")
+    ax.set_ylim([0, ax.get_ylim()[1]])
     ax.set_xlabel("")
     ax.grid(alpha=0.2, zorder=3)
     if legend:
@@ -772,7 +786,7 @@ def plot_uc_rls(
         ax1.plot(df.index, df_total_uc, lw=2, color="black", alpha=0.5)
         ax1.scatter(df.index, df_total_uc, s=50, marker="H", color="black", alpha=0.5)
         ax1.set_ylabel(
-            f"Total uncertainty {unit_labels[metric_id]}", rotation=-90, va="bottom"
+            f"Total uncertainty {gev_labels[metric_id]}", rotation=-90, va="bottom"
         )
 
         # Plot UC components on top with higher alpha

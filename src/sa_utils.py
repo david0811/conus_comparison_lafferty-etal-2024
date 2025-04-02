@@ -29,6 +29,9 @@ def read_loca(
     elif grid == "GARD-LENS":
         loca_grid_str = "gard_grid"
         loca_regrid_str = f"_{regrid_method}"
+    elif grid == "STAR-ESDM":
+        loca_grid_str = "star_grid"
+        loca_regrid_str = f"_{regrid_method}"
 
     # Get file info
     stat_name = "stat" if stationary else "nonstat"
@@ -181,6 +184,9 @@ def read_gard(
     elif grid == "GARD-LENS":
         gard_grid_str = "original_grid"
         gard_regrid_str = ""
+    elif grid == "STAR-ESDM":
+        gard_grid_str = "star_grid"
+        gard_regrid_str = f"_{regrid_method}"
 
     # Get file info
     stat_name = "stat" if stationary else "nonstat"

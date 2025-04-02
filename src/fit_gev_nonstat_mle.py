@@ -11,7 +11,7 @@ def parse_args():
     parser.add_argument("--member", type=str, required=True)
     parser.add_argument("--ssp", type=str, required=True)
     parser.add_argument("--metric_id", type=str, required=True)
-    parser.add_argument("--bootstrap", type=bool, required=False, default=False)
+    parser.add_argument("--bootstrap", type=int, required=False, default=0)
     return parser.parse_args()
 
 
@@ -23,7 +23,7 @@ def main():
         member=args.member,
         ssp=args.ssp,
         metric_id=args.metric_id,
-        bootstrap=args.bootstrap,
+        bootstrap=bool(args.bootstrap),
     )
 
 

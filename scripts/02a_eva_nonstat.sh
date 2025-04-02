@@ -8,11 +8,10 @@ METRIC_IDS=("max_pr" "max_tasmax" "min_tasmin")
 # METRIC_IDS=("max_tasmax" "max_pr")
 
 # Define allowed ensembles
-# ALLOWED_ENSEMBLES=("STAR-ESDM" "LOCA2" "GARD-LENS")
-ALLOWED_ENSEMBLES=("GARD-LENS LOCA2")
+ALLOWED_ENSEMBLES=("STAR-ESDM" "LOCA2" "GARD-LENS")
 
 # Set bootstrap or not
-BOOTSTRAP=true
+BOOTSTRAP=0
 #######################################################################
 
 # Get climate info for all
@@ -45,7 +44,8 @@ do
         # Process each metric ID for the current row
         for metric_id in "${METRIC_IDS[@]}"; do
             # Check if done
-            if [ -f "${PROJECT_DATA_DIR}/extreme_value/original_grid/${metric_id}/${ensemble}_${gcm}_${member}_${ssp}_1950-2100_nonstat_mle_${BOOTSTRAP:+100boot}${BOOTSTRAP:-main}.nc" ]; then
+            SUFFIX=$([ "$BOOTSTRAP" -eq 1 ] && echo "100boot" || echo "main")
+            if [ -f "${PROJECT_DATA_DIR}/extreme_value/original_grid/${metric_id}/${ensemble}_${gcm}_${member}_${ssp}_1950-2100_nonstat_mle_${SUFFIX}.nc" ]; then
                 echo "  Skipping: $metric_id, $ensemble, $gcm, $member, $ssp (already done)"
                 continue
             fi
@@ -58,8 +58,8 @@ done
 
 # Count the number of jobs
 TOTAL_JOBS=$(wc -l < $PARAM_FILE)
-MAX_QUEUED=50  # Set to just below your submission limit
-SLEEP_TIME=60*60  # 1 hour between checks
+MAX_QUEUED=30  # Set to just below your submission limit
+SLEEP_TIME=600  # 10 minutes between checks
 
 for ((i=1; i<=$TOTAL_JOBS; i++)); do
     # Check current queue count
@@ -88,14 +88,15 @@ for ((i=1; i<=$TOTAL_JOBS; i++)); do
 done
 
 # Remove parameter file
-# rm $PARAM_FILE
+rm $PARAM_FILE
 
 # # Test
 # job_name="test_job_10gb"
-# ensemble="STAR-ESDM"
-# gcm="CanESM5"
+# ensemble="GARD-LENS"
+# gcm="canesm5"
 # member="r1i1p1f1"
-# ssp="ssp585"
+# ssp="ssp370"
 # metric_id="max_pr"
+# bootstrap=1
 # echo "Submitting job: $job_name"
-# sbatch -J $job_name ../src/submit_gev_nonstat.sh $ensemble $gcm $member $ssp $metric_id
+# sbatch -J $job_name ../src/submit_gev_nonstat.sh $ensemble $gcm $member $ssp $metric_id $bootstrap

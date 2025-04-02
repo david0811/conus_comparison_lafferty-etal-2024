@@ -227,6 +227,13 @@ def _gev_fit_parametric_bootstrap_1d_nonstationary(
     scale = params_in[2]
     shape = params_in[3]
 
+    # Return NaN if all Nans or zeros
+    if np.isnan(params_in).any():
+        if return_samples:
+            return np.nan * np.ones((n_boot, 4))
+        else:
+            return np.nan * np.ones((2, 4))
+
     params_out = np.zeros((n_boot, 4))
 
     # Bootstrap sampling
@@ -250,7 +257,8 @@ def _gev_fit_parametric_bootstrap_1d_nonstationary(
 
 def _gev_parametric_bootstrap_1d_nonstationary(
     params,
-    years,
+    expected_length,
+    starting_year,
     n_data,
     n_boot,
     fit_method,
@@ -285,14 +293,14 @@ def _gev_parametric_bootstrap_1d_nonstationary(
     for i in range(n_boot):
         # Do the fit
         params_out[i, :] = _fit_gev_1d_nonstationary(
-            boot_sample[i], years, fit_method=fit_method
+            boot_sample[i], expected_length, fit_method=fit_method
         )
         # Return levels
         loc_intcp_tmp, loc_trend_tmp, scale_tmp, shape_tmp = params_out[i, :]
         return_levels_out[i, :] = [
             estimate_return_level(
                 period,
-                loc_intcp_tmp + loc_trend_tmp * (return_period_year - years[0]),
+                loc_intcp_tmp + loc_trend_tmp * (return_period_year - starting_year),
                 scale_tmp,
                 shape_tmp,
             )
@@ -303,13 +311,13 @@ def _gev_parametric_bootstrap_1d_nonstationary(
         return_level_diffs_out[i, :] = [
             estimate_return_level(
                 period,
-                loc_intcp_tmp + loc_trend_tmp * (return_period_diff[1] - years[0]),
+                loc_intcp_tmp + loc_trend_tmp * (return_period_diff[1] - starting_year),
                 scale_tmp,
                 shape_tmp,
             )
             - estimate_return_level(
                 period,
-                loc_intcp_tmp + loc_trend_tmp * (return_period_diff[0] - years[0]),
+                loc_intcp_tmp + loc_trend_tmp * (return_period_diff[0] - starting_year),
                 scale_tmp,
                 shape_tmp,
             )
@@ -320,13 +328,13 @@ def _gev_parametric_bootstrap_1d_nonstationary(
         return_level_chfcs_out[i, :] = [
             estimate_return_level(
                 period,
-                loc_intcp_tmp + loc_trend_tmp * (return_period_diff[1] - years[0]),
+                loc_intcp_tmp + loc_trend_tmp * (return_period_diff[1] - starting_year),
                 scale_tmp,
                 shape_tmp,
             )
             / estimate_return_level(
                 period,
-                loc_intcp_tmp + loc_trend_tmp * (return_period_diff[0] - years[0]),
+                loc_intcp_tmp + loc_trend_tmp * (return_period_diff[0] - starting_year),
                 scale_tmp,
                 shape_tmp,
             )
@@ -596,36 +604,55 @@ def fit_ns_gev_single(
             return None
 
         ## Read data file
-        # LOCA2
-        if ensemble == "LOCA2":
-            # Projection
-            proj_files = glob(
-                f"{project_data_path}/metrics/LOCA2/{metric_id}_{gcm}_{member}_{ssp}_*.nc"
-            )
-            ds = xr.concat([xr.open_dataset(file) for file in proj_files], dim="time")
-            # Historical
-            ds_hist = xr.open_dataset(
-                f"{project_data_path}/metrics/LOCA2/{metric_id}_{gcm}_{member}_historical_1950-2014.nc"
-            )
-            ds = xr.concat([ds_hist, ds], dim="time")
-        # GARD-LENS
-        elif ensemble == "GARD-LENS":
-            ds = xr.open_dataset(
-                f"{project_data_path}/metrics/GARD-LENS/{metric_id}_{gcm}_{member}_{ssp}.nc"
-            )
-        # STAR-ESDM
-        elif ensemble == "STAR-ESDM":
-            ds = xr.open_dataset(
-                f"{project_data_path}/metrics/STAR-ESDM/{metric_id}_{gcm}_{member}_{ssp}.nc"
-            )
-        else:
-            raise ValueError(f"Ensemble {ensemble} not supported")
+        if not bootstrap:
+            # LOCA2
+            if ensemble == "LOCA2":
+                # Projection
+                proj_files = glob(
+                    f"{project_data_path}/metrics/LOCA2/{metric_id}_{gcm}_{member}_{ssp}_*.nc"
+                )
+                ds = xr.concat(
+                    [xr.open_dataset(file) for file in proj_files], dim="time"
+                )
+                # Historical
+                ds_hist = xr.open_dataset(
+                    f"{project_data_path}/metrics/LOCA2/{metric_id}_{gcm}_{member}_historical_1950-2014.nc"
+                )
+                ds = xr.concat([ds_hist, ds], dim="time")
+            # GARD-LENS
+            elif ensemble == "GARD-LENS":
+                ds = xr.open_dataset(
+                    f"{project_data_path}/metrics/GARD-LENS/{metric_id}_{gcm}_{member}_{ssp}.nc"
+                )
+            # STAR-ESDM
+            elif ensemble == "STAR-ESDM":
+                ds = xr.open_dataset(
+                    f"{project_data_path}/metrics/STAR-ESDM/{metric_id}_{gcm}_{member}_{ssp}.nc"
+                )
+            else:
+                raise ValueError(f"Ensemble {ensemble} not supported")
 
-        # Check length is as expected
-        ds["time"] = ds["time"].dt.year
-        ds = ds.sel(time=slice(years[0], years[1]))
-        expected_length = check_data_length(ds["time"], ensemble, gcm, ssp, years)
-        starting_year = int(ds["time"].min())
+            # Check length is as expected
+            ds["time"] = ds["time"].dt.year
+            ds = ds.sel(time=slice(years[0], years[1]))
+            expected_length = check_data_length(ds["time"], ensemble, gcm, ssp, years)
+            starting_year = int(ds["time"].min())
+
+        else:
+            # Read parameter file
+            ds = xr.open_dataset(
+                f"{store_path}/{ensemble}_{gcm}_{member}_{ssp}_{time_name}_nonstat_{fit_method}_main.nc"
+            )
+            expected_length = check_data_length(None, ensemble, gcm, ssp, years)
+            # GARD EC-Earth3 starts in 1970
+            starting_year = (
+                1950
+                if expected_length == 151
+                else 1970
+                if expected_length == 131
+                else None
+            )
+            assert starting_year is not None, "starting year not found"
 
         # Fit GEV
         if bootstrap:
