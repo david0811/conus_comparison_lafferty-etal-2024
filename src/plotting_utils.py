@@ -112,6 +112,8 @@ def plot_uc_map(
     elif analysis_type == "extreme_value":
         stat_str = "stat" if stationary else "nonstat"
         file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{return_period}yr_return_level_{fit_method}_{stat_str}_{grid}grid_{regrid_method}.nc"
+    elif analysis_type == "averages":
+        file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{grid}grid_{regrid_method}.nc"
 
     uc = xr.open_dataset(file_path)
 
@@ -157,12 +159,12 @@ def plot_uc_map(
     }
 
     if axs is None:
-        # ncols = 6 if analysis_type == "extreme_value" else 5
-        # width = 14 if analysis_type == "extreme_value" else 11
+        ncols = 5 if analysis_type == "averages" else 6
+        width = 11 if analysis_type == "averages" else 14
         fig, axs = plt.subplots(
             1,
-            6,
-            figsize=(14, 3),
+            ncols,
+            figsize=(width, 3),
             layout="constrained",
             subplot_kw=dict(projection=ccrs.LambertConformal()),
         )
@@ -173,13 +175,14 @@ def plot_uc_map(
 
     # Get vmin, vmax to format nicely for 11 levels
     nlevels = 10
-    if metric_id in [
-        "avg_tas",
-        "avg_tasmin",
-        "avg_tasmax",
-    ]:  # values are much smaller here
-        vmin = np.round(uc[norm].min().to_numpy(), decimals=1)
-        vmax = np.round(uc[norm].max().to_numpy(), decimals=1)
+    if analysis_type == "trends":
+        if metric_id in [
+            "avg_tas",
+            "avg_tasmin",
+            "avg_tasmax",
+        ]:  # values are much smaller here
+            vmin = np.round(uc[norm].min().to_numpy(), decimals=1)
+            vmax = np.round(uc[norm].max().to_numpy(), decimals=1)
     else:
         vmin = np.round(uc[norm].min().to_numpy(), decimals=0)
         raw_range = uc[norm].quantile(0.95).to_numpy() - vmin

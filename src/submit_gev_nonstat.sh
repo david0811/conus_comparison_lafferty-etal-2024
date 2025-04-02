@@ -19,18 +19,20 @@ GCM=$2
 MEMBER=$3
 SSP=$4
 METRIC_ID=$5
+BOOTSTRAP=$6
 
 echo "ENSEMBLE: $ENSEMBLE"
 echo "GCM: $GCM"
 echo "MEMBER: $MEMBER"
 echo "SSP: $SSP"
 echo "METRIC_ID: $METRIC_ID"
+echo "BOOTSTRAP: $BOOTSTRAP"
 
 # Load modules
 module load r/4.4.2
 
 # Run
 # uv run src/fit_gev_nonstat_mle_R.py --ensemble $ENSEMBLE --gcm $GCM --member $MEMBER --ssp $SSP --metric_id $METRIC_ID
-uv run src/fit_gev_nonstat_mle.py --ensemble $ENSEMBLE --gcm $GCM --member $MEMBER --ssp $SSP --metric_id $METRIC_ID
+uv run src/fit_gev_nonstat_mle.py --ensemble $ENSEMBLE --gcm $GCM --member $MEMBER --ssp $SSP --metric_id $METRIC_ID --bootstrap $BOOTSTRAP
 
 echo "Job completed at $(date)"

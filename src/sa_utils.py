@@ -17,6 +17,7 @@ def read_loca(
     bootstrap,
     cols_to_keep,
     analysis_type,
+    n_boot=100,
 ):
     """
     Reads the LOCA GEV/trend data for a given metric.
@@ -31,7 +32,7 @@ def read_loca(
 
     # Get file info
     stat_name = "stat" if stationary else "nonstat"
-    boot_name = "bootstrap" if bootstrap else "main"
+    boot_name = boot_name = f"{n_boot}boot" if bootstrap else "main"
     if analysis_type == "extreme_value":
         if bootstrap:
             file_info = f"{proj_slice}_{hist_slice}_{stat_name}_{fit_method}_{boot_name}{loca_regrid_str}"
@@ -41,6 +42,9 @@ def read_loca(
             )
     elif analysis_type == "trends":
         file_info = f"{proj_slice}_{boot_name}*{loca_regrid_str}"
+    elif analysis_type == "averages":
+        hist_name = f"_{hist_slice}" if hist_slice is not None else ""
+        file_info = f"{proj_slice}{hist_name}{loca_regrid_str}"
 
     # Read all
     loca_ssp245_files = glob(
@@ -68,18 +72,17 @@ def read_loca(
         dim="ssp",
     )
 
-    if hist_slice is not None:
-        if not bootstrap:
-            file_info = (
-                f"{hist_slice}_{stat_name}_{fit_method}_{boot_name}{loca_regrid_str}"
-            )
-            loca_hist_files = glob(
-                f"{project_data_path}/{analysis_type}/{loca_grid_str}/{metric_id}/LOCA2_*_{file_info}.nc"
-            )
-            ds_loca_hist = xr.combine_by_coords(
-                [xr.open_dataset(file)[cols_to_keep] for file in loca_hist_files]
-            )
-            ds_loca = xr.concat([ds_loca, ds_loca_hist], dim="ssp")
+    if analysis_type == "extreme_value":
+        if hist_slice is not None:
+            if not bootstrap:
+                file_info = f"{hist_slice}_{stat_name}_{fit_method}_{boot_name}{loca_regrid_str}"
+                loca_hist_files = glob(
+                    f"{project_data_path}/{analysis_type}/{loca_grid_str}/{metric_id}/LOCA2_*_{file_info}.nc"
+                )
+                ds_loca_hist = xr.combine_by_coords(
+                    [xr.open_dataset(file)[cols_to_keep] for file in loca_hist_files]
+                )
+                ds_loca = xr.concat([ds_loca, ds_loca_hist], dim="ssp")
 
     return ds_loca
 
@@ -95,6 +98,7 @@ def read_star(
     bootstrap,
     cols_to_keep,
     analysis_type,
+    n_boot=100,
 ):
     """
     Reads the STAR GEV/trend data for a given metric.
@@ -112,7 +116,8 @@ def read_star(
 
     # Get file info
     stat_name = "stat" if stationary else "nonstat"
-    boot_name = "bootstrap" if bootstrap else "main"
+    boot_name = f"{n_boot}boot" if bootstrap else "main"
+
     if analysis_type == "extreme_value":
         if bootstrap:
             file_info = f"{proj_slice}_{hist_slice}_{stat_name}_{fit_method}_{boot_name}{star_regrid_str}"
@@ -122,6 +127,9 @@ def read_star(
             )
     elif analysis_type == "trends":
         file_info = f"{proj_slice}_{boot_name}*{star_regrid_str}"
+    elif analysis_type == "averages":
+        hist_name = f"_{hist_slice}" if hist_slice is not None else ""
+        file_info = f"{proj_slice}{hist_name}{star_regrid_str}"
 
     # Read all files
     star_proj_files = glob(
@@ -132,18 +140,17 @@ def read_star(
     )
 
     # Read historical if desired
-    if hist_slice is not None:
-        if not bootstrap:
-            file_info = (
-                f"{hist_slice}_{stat_name}_{fit_method}_{boot_name}{star_regrid_str}"
-            )
-            star_hist_files = glob(
-                f"{project_data_path}/{analysis_type}/{star_grid_str}/{metric_id}/STAR-ESDM_*_{file_info}.nc"
-            )
-            ds_star_hist = xr.combine_by_coords(
-                [xr.open_dataset(file)[cols_to_keep] for file in star_hist_files]
-            )
-            ds_star = xr.concat([ds_star, ds_star_hist], dim="ssp")
+    if analysis_type == "extreme_value":
+        if hist_slice is not None:
+            if not bootstrap:
+                file_info = f"{hist_slice}_{stat_name}_{fit_method}_{boot_name}{star_regrid_str}"
+                star_hist_files = glob(
+                    f"{project_data_path}/{analysis_type}/{star_grid_str}/{metric_id}/STAR-ESDM_*_{file_info}.nc"
+                )
+                ds_star_hist = xr.combine_by_coords(
+                    [xr.open_dataset(file)[cols_to_keep] for file in star_hist_files]
+                )
+                ds_star = xr.concat([ds_star, ds_star_hist], dim="ssp")
 
     # Drop TaiESM1 -- too hot! (outputs were recalled)
     ds_star = ds_star.drop_sel(gcm="TaiESM1")
@@ -162,6 +169,7 @@ def read_gard(
     bootstrap,
     cols_to_keep,
     analysis_type,
+    n_boot=100,
 ):
     """
     Reads the GARD GEV/trend data for a given metric.
@@ -186,6 +194,9 @@ def read_gard(
             )
     elif analysis_type == "trends":
         file_info = f"{proj_slice}_{boot_name}*{gard_regrid_str}"
+    elif analysis_type == "averages":
+        hist_name = f"_{hist_slice}" if hist_slice is not None else ""
+        file_info = f"{proj_slice}{hist_name}{gard_regrid_str}"
 
     # Read all files
     gard_proj_files = glob(
@@ -196,18 +207,17 @@ def read_gard(
     )
 
     # Get hist if desired (only for main as boot already contains)
-    if hist_slice is not None:
-        if not bootstrap:
-            file_info = (
-                f"{hist_slice}_{stat_name}_{fit_method}_{boot_name}{gard_regrid_str}"
-            )
-            gard_hist_files = glob(
-                f"{project_data_path}/{analysis_type}/{gard_grid_str}/{metric_id}/GARD-LENS_*_{file_info}.nc"
-            )
-            ds_gard_hist = xr.combine_by_coords(
-                [xr.open_dataset(file)[cols_to_keep] for file in gard_hist_files]
-            )
-            ds_gard = xr.concat([ds_gard, ds_gard_hist], dim="ssp")
+    if analysis_type == "extreme_value":
+        if hist_slice is not None:
+            if not bootstrap:
+                file_info = f"{hist_slice}_{stat_name}_{fit_method}_{boot_name}{gard_regrid_str}"
+                gard_hist_files = glob(
+                    f"{project_data_path}/{analysis_type}/{gard_grid_str}/{metric_id}/GARD-LENS_*_{file_info}.nc"
+                )
+                ds_gard_hist = xr.combine_by_coords(
+                    [xr.open_dataset(file)[cols_to_keep] for file in gard_hist_files]
+                )
+                ds_gard = xr.concat([ds_gard, ds_gard_hist], dim="ssp")
 
     return ds_gard
 
@@ -223,6 +233,7 @@ def read_all(
     bootstrap,
     cols_to_keep,
     analysis_type,
+    n_boot=100,
 ):
     """
     Reads all the GEV data for a given metric.
@@ -238,6 +249,7 @@ def read_all(
         bootstrap=bootstrap,
         cols_to_keep=cols_to_keep,
         analysis_type=analysis_type,
+        n_boot=n_boot,
     )
     ds_star = read_star(
         metric_id=metric_id,
@@ -250,6 +262,7 @@ def read_all(
         bootstrap=bootstrap,
         cols_to_keep=cols_to_keep,
         analysis_type=analysis_type,
+        n_boot=n_boot,
     )
     ds_gard = read_gard(
         metric_id=metric_id,
@@ -262,6 +275,7 @@ def read_all(
         bootstrap=bootstrap,
         cols_to_keep=cols_to_keep,
         analysis_type=analysis_type,
+        n_boot=n_boot,
     )
 
     return ds_loca, ds_star, ds_gard
@@ -572,6 +586,7 @@ def uc_all(
     hist_slice,
     return_metric=False,
     analysis_type="extreme_value",
+    n_boot=100,
 ):
     """
     Perform the UC for all.
@@ -588,13 +603,21 @@ def uc_all(
         bootstrap=False,
         cols_to_keep=[col_name],
         analysis_type=analysis_type,
+        n_boot=n_boot,
     )
 
     # Compute change if desired
-    if hist_slice is not None:
-        ds_loca = (ds_loca - ds_loca.sel(ssp="historical")).drop_sel(ssp="historical")
-        ds_gard = (ds_gard - ds_gard.sel(ssp="historical")).drop_sel(ssp="historical")
-        ds_star = (ds_star - ds_star.sel(ssp="historical")).drop_sel(ssp="historical")
+    if analysis_type == "extreme_value":
+        if hist_slice is not None:
+            ds_loca = (ds_loca - ds_loca.sel(ssp="historical")).drop_sel(
+                ssp="historical"
+            )
+            ds_gard = (ds_gard - ds_gard.sel(ssp="historical")).drop_sel(
+                ssp="historical"
+            )
+            ds_star = (ds_star - ds_star.sel(ssp="historical")).drop_sel(
+                ssp="historical"
+            )
 
     # Compute GCM uncertainty
     gcm_uc = compute_gcm_uc(ds_loca, ds_gard, ds_star, col_name)
@@ -609,58 +632,57 @@ def uc_all(
     # Compute downscaling uncertainty
     dsc_uc = compute_dsc_uc(ds_loca, ds_gard, ds_star, col_name)
 
+    # Compute total uncertainty
+    if analysis_type == "averages":
+        uc_99w = compute_tot_uc_main(ds_loca, ds_gard, ds_star, col_name)
+
+        fit_uc = xr.zeros_like(uc_99w)
+
     del ds_loca, ds_star, ds_gard  # memory management
 
     # Fit uncertainty
-    # Read all: bootstrap
-    ds_loca, ds_star, ds_gard = read_all(
-        metric_id=metric_id,
-        grid=grid,
-        regrid_method=regrid_method,
-        proj_slice=proj_slice,
-        hist_slice="1950-2014",
-        stationary=stationary,
-        fit_method=fit_method,
-        bootstrap=True,
-        cols_to_keep=[col_name],
-        analysis_type=analysis_type,
-    )
+    if analysis_type != "averages":
+        # Read all: bootstrap
+        ds_loca, ds_star, ds_gard = read_all(
+            metric_id=metric_id,
+            grid=grid,
+            regrid_method=regrid_method,
+            proj_slice=proj_slice,
+            hist_slice="1950-2014",
+            stationary=stationary,
+            fit_method=fit_method,
+            bootstrap=True,
+            cols_to_keep=[col_name],
+            analysis_type=analysis_type,
+            n_boot=n_boot,
+        )
 
-    # Compute change if desired
-    if analysis_type == "extreme_value":
-        if bool(hist_slice and proj_slice):
-            time_sel = "diff"
-        elif hist_slice is None:
-            time_sel = "proj"
-        elif proj_slice is None:
-            time_sel = "hist"
-    elif analysis_type == "trends":
-        time_sel = None
+        # Compute change if desired
+        if analysis_type == "extreme_value":
+            if bool(hist_slice and proj_slice):
+                time_sel = "diff"
+            elif hist_slice is None:
+                time_sel = "proj"
+            elif proj_slice is None:
+                time_sel = "hist"
+        elif analysis_type == "trends":
+            time_sel = None
 
-    # Compute fit uncertainty
-    fit_uc = compute_fit_uc(ds_loca, ds_gard, ds_star, time_sel, col_name)
-    fit_uc = fit_uc.rename("fit_uc")
+        # Compute fit uncertainty
+        fit_uc = compute_fit_uc(ds_loca, ds_gard, ds_star, time_sel, col_name)
 
-    # Compute total uncertainty
-    uc_99w = compute_tot_uc_bootstrap(ds_loca, ds_gard, ds_star, time_sel, col_name)
-    uc_99w = uc_99w.rename("uc_99w")
-
-    # Merge
-    ssp_uc = ssp_uc.rename("ssp_uc")
-    ssp_uc_by_gcm = ssp_uc_by_gcm.rename("ssp_uc_by_gcm")
-    gcm_uc = gcm_uc.rename("gcm_uc")
-    iv_uc = iv_uc.rename("iv_uc")
-    dsc_uc = dsc_uc.rename("dsc_uc")
+        # Compute total uncertainty
+        uc_99w = compute_tot_uc_bootstrap(ds_loca, ds_gard, ds_star, time_sel, col_name)
 
     uc = xr.merge(
         [
-            ssp_uc_by_gcm,
-            ssp_uc,
-            gcm_uc,
-            iv_uc,
-            dsc_uc,
-            fit_uc,
-            uc_99w,
+            ssp_uc_by_gcm.rename("ssp_uc_by_gcm"),
+            ssp_uc.rename("ssp_uc"),
+            gcm_uc.rename("gcm_uc"),
+            iv_uc.rename("iv_uc"),
+            dsc_uc.rename("dsc_uc"),
+            fit_uc.rename("fit_uc"),
+            uc_99w.rename("uc_99w"),
         ]
     )
 

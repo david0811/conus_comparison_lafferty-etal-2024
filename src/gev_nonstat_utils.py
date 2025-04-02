@@ -574,8 +574,11 @@ def fit_ns_gev_single(
     metric_id,
     fit_method="mle",
     years=[1950, 2100],
+    bootstrap=False,
+    n_boot=100,
     periods_for_level=[10, 25, 50, 100],
     return_period_years=[1975, 2000, 2025, 2050, 2075, 2100],
+    return_period_diffs=[(2075, 1975)],
     project_data_path=project_data_path,
     project_code_path=project_code_path,
 ):
@@ -585,9 +588,8 @@ def fit_ns_gev_single(
     try:
         # Check if done
         time_name = f"{years[0]}-{years[1]}"
-        store_name = (
-            f"{ensemble}_{gcm}_{member}_{ssp}_{time_name}_nonstat_{fit_method}_main.nc"
-        )
+        boot_name = f"{n_boot}boot" if bootstrap else "main"
+        store_name = f"{ensemble}_{gcm}_{member}_{ssp}_{time_name}_nonstat_{fit_method}_{boot_name}.nc"
         store_path = f"{project_data_path}/extreme_value/original_grid/{metric_id}"
 
         if os.path.exists(f"{store_path}/{store_name}"):
@@ -626,15 +628,28 @@ def fit_ns_gev_single(
         starting_year = int(ds["time"].min())
 
         # Fit GEV
-        ds_out = fit_ns_gev_xr(
-            ds=ds,
-            metric_id=metric_id,
-            fit_method=fit_method,
-            expected_length=expected_length,
-            starting_year=starting_year,
-            periods_for_level=periods_for_level,
-            return_period_years=return_period_years,
-        )
+        if bootstrap:
+            ds_out = fit_ns_gev_xr_bootstrap(
+                params_in=ds,
+                metric_id=metric_id,
+                fit_method=fit_method,
+                expected_length=expected_length,
+                starting_year=starting_year,
+                n_boot=n_boot,
+                periods_for_level=periods_for_level,
+                return_period_years=return_period_years,
+                return_period_diffs=return_period_diffs,
+            )
+        else:
+            ds_out = fit_ns_gev_xr(
+                ds=ds,
+                metric_id=metric_id,
+                fit_method=fit_method,
+                expected_length=expected_length,
+                starting_year=starting_year,
+                periods_for_level=periods_for_level,
+                return_period_years=return_period_years,
+            )
         ## Store
         gcm_name, member_name = map_store_names(ensemble, gcm, member)
         ds_out = ds_out.expand_dims(
@@ -654,7 +669,7 @@ def fit_ns_gev_single(
     except Exception as e:
         except_path = f"{project_code_path}/scripts/logs/gev_freq/"
         with open(
-            f"{except_path}/{ensemble}_{gcm}_{member}_{ssp}_{metric_id}_nonstat_{fit_method}_main.txt",
+            f"{except_path}/{ensemble}_{gcm}_{member}_{ssp}_{metric_id}_nonstat_{fit_method}_{boot_name}.txt",
             "w",
         ) as f:
             f.write(str(e))
