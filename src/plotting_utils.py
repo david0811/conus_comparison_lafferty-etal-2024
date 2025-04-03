@@ -99,6 +99,7 @@ subfigure_labels = ["a)", "b)", "c)", "d)", "e)", "f)", "g)", "h)", "i)"]
 # Map plotting
 ##################
 def plot_uc_map(
+    file_name,
     metric_id,
     proj_slice,
     hist_slice,
@@ -108,6 +109,7 @@ def plot_uc_map(
     fit_method,
     stationary,
     analysis_type,
+    plot_fit_uc=False,
     regrid_method="nearest",
     fig=None,
     axs=None,
@@ -118,13 +120,16 @@ def plot_uc_map(
     y_title=0.98,
 ):
     # Read
-    if analysis_type == "trend":
+    if analysis_type == "trends":
         file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{plot_col}_{grid}grid_{regrid_method}.nc"
+        # file_path = f"{project_data_path}/results/{file_name}.nc"
     elif analysis_type == "extreme_value":
-        stat_str = "stat" if stationary else "nonstat"
-        file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{return_period}yr_return_level_{fit_method}_{stat_str}_{grid}grid_{regrid_method}.nc"
+        # stat_str = "stat" if stationary else "nonstat"
+        # file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{return_period}yr_return_level_{fit_method}_{stat_str}_{grid}grid_{regrid_method}.nc"
+        file_path = f"{project_data_path}/results/{file_name}.nc"
     elif analysis_type == "averages":
         file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{grid}grid_{regrid_method}.nc"
+        # file_path = f"{project_data_path}/results/{file_name}.nc"
 
     uc = xr.open_dataset(file_path)
 
@@ -191,14 +196,13 @@ def plot_uc_map(
 
     # Get vmin, vmax to format nicely for 11 levels
     nlevels = 10
-    if analysis_type == "trends":
-        if metric_id in [
-            "avg_tas",
-            "avg_tasmin",
-            "avg_tasmax",
-        ]:  # values are much smaller here
-            vmin = np.round(uc[norm].min().to_numpy(), decimals=1)
-            vmax = np.round(uc[norm].max().to_numpy(), decimals=1)
+    if analysis_type == "trends" and metric_id in [
+        "avg_tas",
+        "avg_tasmin",
+        "avg_tasmax",
+    ]:  # values are much smaller here
+        vmin = np.round(uc[norm].min().to_numpy(), decimals=1)
+        vmax = np.round(uc[norm].max().to_numpy(), decimals=1)
     else:
         vmin = np.round(uc[norm].min().to_numpy(), decimals=0)
         raw_range = uc[norm].quantile(0.95).to_numpy() - vmin
@@ -249,7 +253,7 @@ def plot_uc_map(
 
     # Loop through uncertainties
     for axi, uc_type in enumerate(list(uc_labels.keys())):
-        if analysis_type == "averages" and uc_type == "fit_uc":
+        if not plot_fit_uc and uc_type == "fit_uc":
             continue
         ax = axs[axi + 1]
         p = (scale_factor * uc[uc_type]).plot(

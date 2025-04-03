@@ -18,6 +18,7 @@ def read_loca(
     cols_to_keep,
     analysis_type,
     n_boot=100,
+    _preprocess_func=lambda x: x,
 ):
     """
     Reads the LOCA GEV/trend data for a given metric.
@@ -63,13 +64,22 @@ def read_loca(
     ds_loca = xr.concat(
         [
             xr.combine_by_coords(
-                [xr.open_dataset(file)[cols_to_keep] for file in loca_ssp245_files]
+                [
+                    _preprocess_func(xr.open_dataset(file)[cols_to_keep])
+                    for file in loca_ssp245_files
+                ]
             ),
             xr.combine_by_coords(
-                [xr.open_dataset(file)[cols_to_keep] for file in loca_ssp370_files]
+                [
+                    _preprocess_func(xr.open_dataset(file)[cols_to_keep])
+                    for file in loca_ssp370_files
+                ]
             ),
             xr.combine_by_coords(
-                [xr.open_dataset(file)[cols_to_keep] for file in loca_ssp585_files]
+                [
+                    _preprocess_func(xr.open_dataset(file)[cols_to_keep])
+                    for file in loca_ssp585_files
+                ]
             ),
         ],
         dim="ssp",
@@ -83,7 +93,10 @@ def read_loca(
                     f"{project_data_path}/{analysis_type}/{loca_grid_str}/{metric_id}/LOCA2_*_{file_info}.nc"
                 )
                 ds_loca_hist = xr.combine_by_coords(
-                    [xr.open_dataset(file)[cols_to_keep] for file in loca_hist_files]
+                    [
+                        _preprocess_func(xr.open_dataset(file)[cols_to_keep])
+                        for file in loca_hist_files
+                    ]
                 )
                 ds_loca = xr.concat([ds_loca, ds_loca_hist], dim="ssp")
 
@@ -102,6 +115,7 @@ def read_star(
     cols_to_keep,
     analysis_type,
     n_boot=100,
+    _preprocess_func=lambda x: x,
 ):
     """
     Reads the STAR GEV/trend data for a given metric.
@@ -139,7 +153,10 @@ def read_star(
         f"{project_data_path}/{analysis_type}/{star_grid_str}/{metric_id}/STAR-ESDM_*_{file_info}.nc"
     )
     ds_star = xr.combine_by_coords(
-        [xr.open_dataset(file)[cols_to_keep] for file in star_proj_files]
+        [
+            _preprocess_func(xr.open_dataset(file)[cols_to_keep])
+            for file in star_proj_files
+        ]
     )
 
     # Read historical if desired
@@ -151,7 +168,10 @@ def read_star(
                     f"{project_data_path}/{analysis_type}/{star_grid_str}/{metric_id}/STAR-ESDM_*_{file_info}.nc"
                 )
                 ds_star_hist = xr.combine_by_coords(
-                    [xr.open_dataset(file)[cols_to_keep] for file in star_hist_files]
+                    [
+                        _preprocess_func(xr.open_dataset(file)[cols_to_keep])
+                        for file in star_hist_files
+                    ]
                 )
                 ds_star = xr.concat([ds_star, ds_star_hist], dim="ssp")
 
@@ -173,6 +193,7 @@ def read_gard(
     cols_to_keep,
     analysis_type,
     n_boot=100,
+    _preprocess_func=lambda x: x,
 ):
     """
     Reads the GARD GEV/trend data for a given metric.
@@ -209,7 +230,10 @@ def read_gard(
         f"{project_data_path}/{analysis_type}/{gard_grid_str}/{metric_id}/GARD-LENS_*_{file_info}.nc"
     )
     ds_gard = xr.combine_by_coords(
-        [xr.open_dataset(file)[cols_to_keep] for file in gard_proj_files]
+        [
+            _preprocess_func(xr.open_dataset(file)[cols_to_keep])
+            for file in gard_proj_files
+        ]
     )
 
     # Get hist if desired (only for main as boot already contains)
@@ -221,7 +245,10 @@ def read_gard(
                     f"{project_data_path}/{analysis_type}/{gard_grid_str}/{metric_id}/GARD-LENS_*_{file_info}.nc"
                 )
                 ds_gard_hist = xr.combine_by_coords(
-                    [xr.open_dataset(file)[cols_to_keep] for file in gard_hist_files]
+                    [
+                        _preprocess_func(xr.open_dataset(file)[cols_to_keep])
+                        for file in gard_hist_files
+                    ]
                 )
                 ds_gard = xr.concat([ds_gard, ds_gard_hist], dim="ssp")
 
@@ -240,6 +267,7 @@ def read_all(
     cols_to_keep,
     analysis_type,
     n_boot=100,
+    _preprocess_func=lambda x: x,
 ):
     """
     Reads all the GEV data for a given metric.
@@ -256,6 +284,7 @@ def read_all(
         cols_to_keep=cols_to_keep,
         analysis_type=analysis_type,
         n_boot=n_boot,
+        _preprocess_func=_preprocess_func,
     )
     ds_star = read_star(
         metric_id=metric_id,
@@ -269,6 +298,7 @@ def read_all(
         cols_to_keep=cols_to_keep,
         analysis_type=analysis_type,
         n_boot=n_boot,
+        _preprocess_func=_preprocess_func,
     )
     ds_gard = read_gard(
         metric_id=metric_id,
@@ -282,6 +312,7 @@ def read_all(
         cols_to_keep=cols_to_keep,
         analysis_type=analysis_type,
         n_boot=n_boot,
+        _preprocess_func=_preprocess_func,
     )
 
     return ds_loca, ds_star, ds_gard
@@ -464,29 +495,22 @@ def compute_dsc_uc(ds_loca, ds_gard, ds_star, var_name):
     return dsc_uc
 
 
-def ensemble_fit_range(ds, time_sel, var_name):
+def ensemble_fit_range(ds, var_name):
     """
     Fit uncertainty: 95% range
     """
-    if time_sel is not None:
-        fit_range = ds[var_name].sel(time=time_sel, quantile="q975") - ds[var_name].sel(
-            time=time_sel, quantile="q025"
-        )
-    else:
-        fit_range = ds[var_name].sel(quantile="q975") - ds[var_name].sel(
-            quantile="q025"
-        )
+    fit_range = ds[var_name].sel(quantile="q975") - ds[var_name].sel(quantile="q025")
     return fit_range.where(fit_range != 0.0)
 
 
-def compute_fit_uc(ds_loca, ds_gard, ds_star, time_sel, var_name):
+def compute_fit_uc(ds_loca, ds_gard, ds_star, var_name):
     """
     Compute fit uncertainty
     """
     # Compute for individual ensembles
-    loca_fit_range = ensemble_fit_range(ds_loca, time_sel, var_name)
-    star_fit_range = ensemble_fit_range(ds_star, time_sel, var_name)
-    gard_fit_range = ensemble_fit_range(ds_gard, time_sel, var_name)
+    loca_fit_range = ensemble_fit_range(ds_loca, var_name)
+    star_fit_range = ensemble_fit_range(ds_star, var_name)
+    gard_fit_range = ensemble_fit_range(ds_gard, var_name)
 
     # Combine and average over ensembles
     # Compute the average 'by hand' to avoid issues with concat memory requirements
@@ -529,21 +553,21 @@ def compute_tot_uc_main(ds_loca, ds_gard, ds_star, var_name):
         dim="z",
     )
 
+    # Select main quantile if present
+    if "quantile" in ds_stacked.dims:
+        ds_stacked = ds_stacked.sel(quantile="main")
+
     # Measures of uncertainty
     uc_99w = ds_stacked.quantile(0.995, dim="z") - ds_stacked.quantile(0.005, dim="z")
 
     return uc_99w
 
 
-def compute_tot_uc_bootstrap(ds_loca, ds_gard, ds_star, time_sel, var_name):
+def compute_tot_uc_bootstrap(ds_loca, ds_gard, ds_star, var_name):
     """
     Computes total uncertainty (full range).
     Need to do via stacking a new dimension since we can't merge all.
     """
-    if time_sel is not None:
-        ds_loca = ds_loca.sel(time=time_sel)
-        ds_star = ds_star.sel(time=time_sel)
-        ds_gard = ds_gard.sel(time=time_sel)
     # Average of upper/lower quantiles
     ds_upper = xr.concat(
         [
@@ -593,6 +617,8 @@ def uc_all(
     return_metric=False,
     analysis_type="extreme_value",
     n_boot=100,
+    compute_fit_uc=True,
+    _preprocess_func=lambda x: x,
 ):
     """
     Perform the UC for all.
@@ -610,20 +636,19 @@ def uc_all(
         cols_to_keep=[col_name],
         analysis_type=analysis_type,
         n_boot=n_boot,
+        _preprocess_func=_preprocess_func,
     )
 
-    # Compute change if desired
-    if analysis_type == "extreme_value":
-        if hist_slice is not None:
-            ds_loca = (ds_loca - ds_loca.sel(ssp="historical")).drop_sel(
-                ssp="historical"
-            )
-            ds_gard = (ds_gard - ds_gard.sel(ssp="historical")).drop_sel(
-                ssp="historical"
-            )
-            ds_star = (ds_star - ds_star.sel(ssp="historical")).drop_sel(
-                ssp="historical"
-            )
+    # Compute any pre-processing if required
+    # ds_loca = (ds_loca - ds_loca.sel(ssp="historical")).drop_sel(
+    #     ssp="historical"
+    # )
+    # ds_gard = (ds_gard - ds_gard.sel(ssp="historical")).drop_sel(
+    #     ssp="historical"
+    # )
+    # ds_star = (ds_star - ds_star.sel(ssp="historical")).drop_sel(
+    #     ssp="historical"
+    # )
 
     # Compute GCM uncertainty
     gcm_uc = compute_gcm_uc(ds_loca, ds_gard, ds_star, col_name)
@@ -639,7 +664,7 @@ def uc_all(
     dsc_uc = compute_dsc_uc(ds_loca, ds_gard, ds_star, col_name)
 
     # Compute total uncertainty
-    if analysis_type == "averages":
+    if not compute_fit_uc:
         uc_99w = compute_tot_uc_main(ds_loca, ds_gard, ds_star, col_name)
 
         fit_uc = xr.zeros_like(uc_99w)
@@ -647,7 +672,7 @@ def uc_all(
     del ds_loca, ds_star, ds_gard  # memory management
 
     # Fit uncertainty
-    if analysis_type != "averages":
+    if compute_fit_uc:
         # Read all: bootstrap
         ds_loca, ds_star, ds_gard = read_all(
             metric_id=metric_id,
@@ -661,24 +686,31 @@ def uc_all(
             cols_to_keep=[col_name],
             analysis_type=analysis_type,
             n_boot=n_boot,
+            _preprocess_func=_preprocess_func,
         )
 
-        # Compute change if desired
-        if analysis_type == "extreme_value":
-            if bool(hist_slice and proj_slice):
-                time_sel = "diff"
-            elif hist_slice is None:
-                time_sel = "proj"
-            elif proj_slice is None:
-                time_sel = "hist"
-        elif analysis_type == "trends":
-            time_sel = None
+        # # Pre-process if required
+        # if _preprocess_func is not None:
+        #     ds_loca = _preprocess_func(ds_loca)
+        #     ds_gard = _preprocess_func(ds_gard)
+        #     ds_star = _preprocess_func(ds_star)
+
+        # # Compute change if desired
+        # if analysis_type == "extreme_value":
+        #     if bool(hist_slice and proj_slice):
+        #         time_sel = "diff"
+        #     elif hist_slice is None:
+        #         time_sel = "proj"
+        #     elif proj_slice is None:
+        #         time_sel = "hist"
+        # elif analysis_type == "trends":
+        #     time_sel = None
 
         # Compute fit uncertainty
-        fit_uc = compute_fit_uc(ds_loca, ds_gard, ds_star, time_sel, col_name)
+        fit_uc = compute_fit_uc(ds_loca, ds_gard, ds_star, col_name)
 
         # Compute total uncertainty
-        uc_99w = compute_tot_uc_bootstrap(ds_loca, ds_gard, ds_star, time_sel, col_name)
+        uc_99w = compute_tot_uc_bootstrap(ds_loca, ds_gard, ds_star, col_name)
 
     uc = xr.merge(
         [

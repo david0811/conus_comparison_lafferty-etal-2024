@@ -163,7 +163,9 @@ def nonstationary_optimizer(data, covariate, initial_params):
         return (np.nan, np.nan, np.nan, np.nan)
 
 
-def _fit_gev_1d_nonstationary(data, expected_length, fit_method="mle"):
+def _fit_gev_1d_nonstationary(
+    data, expected_length, fit_method="mle", initial_params=None
+):
     """
     Fit non-stationary GEV to 1-dimensional data. Note we follow scipy convention
     of negating the shape parameter relative to other sources.
@@ -182,11 +184,9 @@ def _fit_gev_1d_nonstationary(data, expected_length, fit_method="mle"):
     result = False
     if fit_method == "mle":
         # Initial params from L-moments
-        loc, scale, shape = pargev_numba(samlmom3_numba(data))
-        # Simple linear regression for location trend
-        # A = np.vstack([np.ones_like(np.arange(len(data))), np.arange(len(data))]).T
-        # loc_intcp, loc_trend = np.linalg.lstsq(A, data, rcond=None)[0]
-        initial_params = [shape, loc, 0.0, scale]
+        if initial_params is None:
+            loc, scale, shape = pargev_numba(samlmom3_numba(data))
+            initial_params = [shape, loc, 0.0, scale]
         # Fit
         try:
             result = nonstationary_optimizer(
@@ -226,6 +226,7 @@ def _gev_fit_parametric_bootstrap_1d_nonstationary(
     loc_trend = params_in[1]
     scale = params_in[2]
     shape = params_in[3]
+    initial_params = [shape, loc_intcp, loc_trend, scale]
 
     # Return NaN if all Nans or zeros
     if np.isnan(params_in).any():
@@ -246,7 +247,10 @@ def _gev_fit_parametric_bootstrap_1d_nonstationary(
     for i in range(n_boot):
         # Do the fit
         params_out[i, :] = _fit_gev_1d_nonstationary(
-            boot_sample[i], expected_length, fit_method=fit_method
+            boot_sample[i],
+            expected_length,
+            fit_method=fit_method,
+            initial_params=initial_params,
         )
     # Return samples or 95% intervals
     if return_samples:
