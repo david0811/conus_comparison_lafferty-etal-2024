@@ -19,7 +19,7 @@ from gev_utils import xr_estimate_return_level, estimate_return_level
 from utils import roar_data_path as project_data_path
 from utils import roar_code_path as project_code_path
 from utils import map_store_names
-from utils import check_data_length
+from utils import check_data_length, get_starting_year
 
 
 #########################
@@ -275,6 +275,7 @@ def _gev_parametric_bootstrap_1d_nonstationary(
     Generate parametric bootstrap samples for GEV.
     """
     loc_intcp, loc_trend, scale, shape = params
+    initial_params = [shape, loc_intcp, loc_trend, scale]
 
     params_out = np.zeros((n_boot, 4))
     return_levels_out = np.zeros(
@@ -297,7 +298,10 @@ def _gev_parametric_bootstrap_1d_nonstationary(
     for i in range(n_boot):
         # Do the fit
         params_out[i, :] = _fit_gev_1d_nonstationary(
-            boot_sample[i], expected_length, fit_method=fit_method
+            boot_sample[i],
+            expected_length,
+            fit_method=fit_method,
+            initial_params=initial_params,
         )
         # Return levels
         loc_intcp_tmp, loc_trend_tmp, scale_tmp, shape_tmp = params_out[i, :]
@@ -411,10 +415,10 @@ def fit_ns_gev_xr(
     lon_name = "longitude" if "longitude" in ds.dims else "lon"
     ds_out = xr.Dataset(
         data_vars={
-            "loc_intcp": (["lat", "lon"], params[0, :, :]),
-            "loc_trend": (["lat", "lon"], params[1, :, :]),
-            "scale": (["lat", "lon"], params[2, :, :]),
-            "shape": (["lat", "lon"], params[3, :, :]),
+            "loc_intcp": ([lat_name, lon_name], params[0, :, :]),
+            "loc_trend": ([lat_name, lon_name], params[1, :, :]),
+            "scale": ([lat_name, lon_name], params[2, :, :]),
+            "shape": ([lat_name, lon_name], params[3, :, :]),
         },
         coords={
             lat_name: ([lat_name], ds[lat_name].to_numpy()),
@@ -451,7 +455,7 @@ def fit_ns_gev_xr_bootstrap(
     starting_year,
     fit_method="mle",
     periods_for_level=[10, 25, 50, 100],
-    return_period_years=[1975, 2000, 2025, 2050, 2075, 2100],
+    return_period_years=[1950, 1975, 2000, 2025, 2050, 2075, 2100],
     return_period_diffs=[(2075, 1975)],
     n_boot=100,
     return_samples=False,
@@ -476,7 +480,7 @@ def fit_ns_gev_xr_bootstrap(
             .to_array()
             .to_numpy()
         ),
-        chunks=(expected_length, 10, 10),
+        chunks=(4, 10, 10),
     )
 
     # Prepare fit function
@@ -589,7 +593,7 @@ def fit_ns_gev_single(
     bootstrap=False,
     n_boot=100,
     periods_for_level=[10, 25, 50, 100],
-    return_period_years=[1975, 2000, 2025, 2050, 2075, 2100],
+    return_period_years=[1950, 1975, 2000, 2025, 2050, 2075, 2100],
     return_period_diffs=[(2075, 1975)],
     project_data_path=project_data_path,
     project_code_path=project_code_path,
@@ -605,6 +609,7 @@ def fit_ns_gev_single(
         store_path = f"{project_data_path}/extreme_value/original_grid/{metric_id}"
 
         if os.path.exists(f"{store_path}/{store_name}"):
+            print(f"Skipping {store_name} because it already exists")
             return None
 
         ## Read data file
@@ -648,15 +653,7 @@ def fit_ns_gev_single(
                 f"{store_path}/{ensemble}_{gcm}_{member}_{ssp}_{time_name}_nonstat_{fit_method}_main.nc"
             )
             expected_length = check_data_length(None, ensemble, gcm, ssp, years)
-            # GARD EC-Earth3 starts in 1970
-            starting_year = (
-                1950
-                if expected_length == 151
-                else 1970
-                if expected_length == 131
-                else None
-            )
-            assert starting_year is not None, "starting year not found"
+            starting_year = get_starting_year(ensemble, gcm, ssp, years)
 
         # Fit GEV
         if bootstrap:
@@ -689,9 +686,11 @@ def fit_ns_gev_single(
                 "member": [member_name],
                 "ssp": [ssp],
                 "ensemble": [ensemble],
-                "quantile": ["main"],
             }
         )
+        if not bootstrap:
+            ds_out = ds_out.assign_coords({"quantile": ["main"]})
+
         # Make sure not all NaNs
         assert np.count_nonzero(~np.isnan(ds_out["shape"])), "all NaNs in fit"
         ds_out.to_netcdf(f"{store_path}/{store_name}")

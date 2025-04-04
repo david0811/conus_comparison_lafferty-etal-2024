@@ -29,7 +29,7 @@ def main():
 
 if __name__ == "__main__":
     # Load Dask cluster
-    cluster = LocalCluster()
+    cluster = LocalCluster(n_workers=20, threads_per_worker=1)
     client = cluster.get_client()
 
     main()

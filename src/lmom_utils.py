@@ -252,7 +252,7 @@ def pargev_numba(lmom):
 ######################
 # Bootstrap versions
 ######################
-@njit(parallel=True)
+@njit
 def samlmom3_bootstrap_numba(data_array, bootstrap_dim=0):
     """
     Numba-accelerated function to calculate L-moments with bootstrap dimension.
@@ -333,7 +333,7 @@ def samlmom3_bootstrap_numba(data_array, bootstrap_dim=0):
 
 
 # Helper functions for GEV parameter estimation
-@njit(parallel=True)
+@njit
 def calculate_gev_params(lmom):
     """Helper function to calculate GEV parameters for a single point"""
     # Constants
@@ -427,7 +427,7 @@ def calculate_gev_params(lmom):
         return para1, para2, para3
 
 
-@njit()
+@njit
 def pargev_bootstrap_numba(lmom_array):
     """
     Numba-accelerated function to estimate GEV parameters from bootstrap L-moments.

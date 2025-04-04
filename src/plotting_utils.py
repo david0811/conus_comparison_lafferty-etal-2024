@@ -99,7 +99,6 @@ subfigure_labels = ["a)", "b)", "c)", "d)", "e)", "f)", "g)", "h)", "i)"]
 # Map plotting
 ##################
 def plot_uc_map(
-    file_name,
     metric_id,
     proj_slice,
     hist_slice,
@@ -108,12 +107,13 @@ def plot_uc_map(
     grid,
     fit_method,
     stationary,
+    time_str,
     analysis_type,
     plot_fit_uc=False,
     regrid_method="nearest",
     fig=None,
     axs=None,
-    norm=None,
+    norm="uc_99w",
     cbar=False,
     vmax_uc=40,
     title="auto",
@@ -122,14 +122,15 @@ def plot_uc_map(
     # Read
     if analysis_type == "trends":
         file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{plot_col}_{grid}grid_{regrid_method}.nc"
-        # file_path = f"{project_data_path}/results/{file_name}.nc"
     elif analysis_type == "extreme_value":
-        # stat_str = "stat" if stationary else "nonstat"
-        # file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{return_period}yr_return_level_{fit_method}_{stat_str}_{grid}grid_{regrid_method}.nc"
-        file_path = f"{project_data_path}/results/{file_name}.nc"
+        if stationary:
+            stat_str = "stat"
+            file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{return_period}yr_return_level_{fit_method}_{stat_str}_{grid}grid_{regrid_method}.nc"
+        else:
+            stat_str = "nonstat"
+            file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{return_period}yr_return_level_{time_str}_{fit_method}_{stat_str}_{grid}grid_{regrid_method}.nc"
     elif analysis_type == "averages":
         file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{grid}grid_{regrid_method}.nc"
-        # file_path = f"{project_data_path}/results/{file_name}.nc"
 
     uc = xr.open_dataset(file_path)
 
@@ -301,6 +302,75 @@ def plot_uc_map(
             fig.suptitle(title, style="italic", y=y_title)
 
     return p
+
+
+def plot_uc_maps(
+    metric_ids,
+    proj_slice,
+    hist_slice,
+    plot_col,
+    return_period,
+    grid,
+    fit_method,
+    stationary,
+    time_str,
+    analysis_type,
+    suptitle=None,
+    plot_fit_uc=False,
+    regrid_method="nearest",
+    norm="uc_99w",
+    vmax_uc=40,
+    y_title=1.08,
+    y_suptitle=1.07,
+    save_path=None,
+):
+    # Set up figure
+    if plot_fit_uc:
+        figsize = (12, 5.5)
+    else:
+        figsize = (10, 5.5)
+
+    fig = plt.figure(figsize=figsize, layout="constrained")
+    subfigs = fig.subfigures(3, 1, hspace=0.01)
+
+    if suptitle is not None:
+        fig.suptitle(suptitle, fontweight="bold", y=y_suptitle)
+
+    # Loop through metrics
+    for idp, metric_id in enumerate(metric_ids):
+        axs = subfigs[idp].subplots(
+            1, 6, subplot_kw=dict(projection=ccrs.LambertConformal())
+        )
+        p = plot_uc_map(
+            metric_id=metric_id,
+            proj_slice=proj_slice,
+            hist_slice=hist_slice,
+            plot_col=plot_col,
+            return_period=return_period,
+            grid=grid,
+            fit_method=fit_method,
+            stationary=stationary,
+            time_str=time_str,
+            analysis_type=analysis_type,
+            vmax_uc=vmax_uc,
+            y_title=y_title,
+            fig=subfigs[idp],
+            axs=axs,
+            plot_fit_uc=plot_fit_uc,
+        )
+
+    # Create a new axes for the colorbar at the bottom
+    if plot_fit_uc:
+        cbar_ax = fig.add_axes([0.515, 0.01, 0.2, 0.025])
+    else:
+        cbar_ax = fig.add_axes([0.5375, 0.01, 0.2, 0.025])
+
+    # Add colorbar using the stored mappable
+    cbar = fig.colorbar(p, cax=cbar_ax, orientation="horizontal")
+    cbar.set_label("Fraction of total uncertainty [%]")
+
+    if save_path is not None:
+        fig.savefig(save_path, dpi=300, bbox_inches="tight")
 
 
 #######################
@@ -742,6 +812,8 @@ def plot_uc_rls(
     idm_start=0,
     return_legend=False,
     y_title=1.05,
+    time_str=None,
+    plot_fit_uc=True,
 ):
     # Make figure
     if axs is None:
@@ -759,7 +831,10 @@ def plot_uc_rls(
         # Read all return levels
         ds = []
         for return_period in return_periods:
-            file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{return_period}yr_return_level_{fit_method}_{stat_str}_{grid}grid_{regrid_method}.nc"
+            if stat_str == "stat":
+                file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{return_period}yr_return_level_{fit_method}_{stat_str}_{grid}grid_{regrid_method}.nc"
+            else:
+                file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{return_period}yr_return_level_{time_str}_{fit_method}_{stat_str}_{grid}grid_{regrid_method}.nc"
             ds.append(
                 xr.open_dataset(file_path).assign_coords(return_period=return_period)
             )
@@ -768,10 +843,8 @@ def plot_uc_rls(
         # Ready for plot
         if coord_or_mean == "mean":
             df = (
-                ds.mean(dim=["lat", "lon"])
-                .to_dataframe()
-                .droplevel("quantile")
-                .drop(columns=["time", "ensemble"])
+                ds.mean(dim=["lat", "lon"]).to_dataframe().droplevel("quantile")
+                # .drop(columns=["time", "ensemble"])
             )
         else:
             df = (
@@ -780,10 +853,9 @@ def plot_uc_rls(
                 )
                 .to_dataframe()
                 .droplevel("quantile")
-                .drop(columns=["time", "ensemble"])
+                # .drop(columns=["time", "ensemble"])
             )
         df_total_uc = df[total_uc]
-        df = df.apply(lambda x: x / df[total_uc])  # normalize
 
         # Plot total UC first with lower alpha
         ax1 = axs[idm].twinx()
@@ -796,10 +868,18 @@ def plot_uc_rls(
         # Plot UC components on top with higher alpha
         ax = axs[idm]
         for uc_type in uc_labels:
-            ax.plot(df.index, df[uc_type], lw=2, color=uc_colors[uc_type], alpha=0.9)
+            if not plot_fit_uc and uc_type == "fit_uc":
+                continue
+            ax.plot(
+                df.index,
+                df[uc_type] / df[total_uc],
+                lw=2,
+                color=uc_colors[uc_type],
+                alpha=0.9,
+            )
             ax.scatter(
                 df.index,
-                df[uc_type],
+                df[uc_type] / df[total_uc],
                 s=50,
                 marker=uc_markers[uc_type],
                 color=uc_colors[uc_type],

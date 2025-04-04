@@ -1,11 +1,18 @@
 #!/bin/bash
+#SBATCH --output=./logs/jobs/meta_eva_nonstat-%a.log
+#SBATCH --error=./logs/jobs/meta_eva_nonstat-%a.err
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=2GB
+#SBATCH --time=2-00:00:00
+#SBATCH --partition=basic
 
-# This script creates a parameter file and submits a SLURM array job
+# This script creates a parameter file and submits a SLURM job for each climate output. It will
+# monitor the queue and ensure no more than $MAX_QUEUED jobs are running at any time.
 
 #######################################################################
 # Set the metric IDs to search
-METRIC_IDS=("max_pr" "max_tasmax" "min_tasmin")
-# METRIC_IDS=("max_tasmax" "max_pr")
+METRIC_IDS=("max_pr" "max_tasmax" "min_tasmin" "max_cdd" "max_hdd")
 
 # Define allowed ensembles
 ALLOWED_ENSEMBLES=("STAR-ESDM" "LOCA2" "GARD-LENS")
@@ -58,13 +65,13 @@ done
 
 # Count the number of jobs
 TOTAL_JOBS=$(wc -l < $PARAM_FILE)
-MAX_QUEUED=30  # Set to just below your submission limit
+MAX_QUEUED=10  # Set to just below your submission limit
 SLEEP_TIME=600  # 10 minutes between checks
 
 for ((i=1; i<=$TOTAL_JOBS; i++)); do
     # Check current queue count
     while true; do
-        QUEUE_COUNT=$(squeue -u $USER | wc -l)
+        QUEUE_COUNT=$(squeue -u $USER -p open | wc -l)
         QUEUE_COUNT=$((QUEUE_COUNT - 1))  # Subtract header line
         
         if [ $QUEUE_COUNT -lt $MAX_QUEUED ]; then
@@ -91,12 +98,12 @@ done
 rm $PARAM_FILE
 
 # # Test
-# job_name="test_job_10gb"
+# job_name="test_job_5gb"
 # ensemble="GARD-LENS"
 # gcm="canesm5"
 # member="r1i1p1f1"
 # ssp="ssp370"
-# metric_id="max_pr"
+# metric_id="min_tasmin"
 # bootstrap=1
 # echo "Submitting job: $job_name"
 # sbatch -J $job_name ../src/submit_gev_nonstat.sh $ensemble $gcm $member $ssp $metric_id $bootstrap

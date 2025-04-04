@@ -110,6 +110,18 @@ def check_data_length(data, ensemble, gcm, ssp, years):
     return expected_length
 
 
+def get_starting_year(ensemble, gcm, ssp, years):
+    """
+    Get starting year function.
+    """
+    # Check length is as expected
+    if ensemble == "GARD-LENS" and gcm in ["ecearth3", "EC-Earth3"]:
+        starting_year = 1970
+    else:
+        starting_year = 1950
+    return starting_year
+
+
 def get_unique_loca_metrics(metric_id, project_data_path=roar_data_path):
     """
     Return unique LOCA2 combinations for given metric_id.

@@ -2,10 +2,10 @@
 #SBATCH --output=../scripts/logs/jobs/%x.log
 #SBATCH --error=../scripts/logs/jobs/%x.err
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=5
+#SBATCH --cpus-per-task=20
 #SBATCH --mem=10GB
-#SBATCH --time=01:00:00
-#SBATCH --account=open
+#SBATCH --time=03:00:00
+#SBATCH --partition=basic
 
 # Code directory
 CODE_DIR="/storage/home/dcl5300/work/current_projects/conus_comparison_lafferty-etal-2024"
@@ -28,11 +28,7 @@ echo "SSP: $SSP"
 echo "METRIC_ID: $METRIC_ID"
 echo "BOOTSTRAP: $BOOTSTRAP"
 
-# Load modules
-# module load r/4.4.2
-
 # Run
-# uv run src/fit_gev_nonstat_mle_R.py --ensemble $ENSEMBLE --gcm $GCM --member $MEMBER --ssp $SSP --metric_id $METRIC_ID
 uv run src/fit_gev_nonstat_mle.py --ensemble $ENSEMBLE --gcm $GCM --member $MEMBER --ssp $SSP --metric_id $METRIC_ID --bootstrap $BOOTSTRAP
 
 echo "Job completed at $(date)"

@@ -220,51 +220,55 @@ def fit_gev_xr_bootstrap(
     )
     ds_fit_main = xr.open_dataset(f"{store_path}/{store_name}")
 
-    # Generate bootstrap sample (careful memory requirements!)
-    # Get dimensions for latitude and longitude, accounting for different naming conventions
-    lat_name = "latitude" if "latitude" in ds_fit_main.dims else "lat"
-    lon_name = "longitude" if "longitude" in ds_fit_main.dims else "lon"
-    n_lat = len(ds_fit_main[lat_name])
-    n_lon = len(ds_fit_main[lon_name])
-    n_time = years[1] - years[0] + 1
+    if n_boot > 1:
+        # Generate bootstrap sample (careful memory requirements!)
+        # Get dimensions for latitude and longitude, accounting for different naming conventions
+        lat_name = "latitude" if "latitude" in ds_fit_main.dims else "lat"
+        lon_name = "longitude" if "longitude" in ds_fit_main.dims else "lon"
+        n_lat = len(ds_fit_main[lat_name])
+        n_lon = len(ds_fit_main[lon_name])
+        n_time = years[1] - years[0] + 1
 
-    shape = np.nan_to_num(ds_fit_main["shape"].to_numpy().squeeze())
-    loc = np.nan_to_num(ds_fit_main["loc"].to_numpy().squeeze())
-    scale = np.nan_to_num(ds_fit_main["scale"].to_numpy().squeeze())
+        shape = np.nan_to_num(ds_fit_main["shape"].to_numpy().squeeze())
+        loc = np.nan_to_num(ds_fit_main["loc"].to_numpy().squeeze())
+        scale = np.nan_to_num(ds_fit_main["scale"].to_numpy().squeeze())
 
-    # Slightly faster to generate per bootstrap iteration?
-    boot_samples = np.stack(
-        [
-            gev.rvs(shape, loc=loc, scale=scale, size=(n_time, n_lat, n_lon))
-            for _ in range(n_boot)
-        ]
-    )
-    boot_samples[boot_samples == 0] = np.nan
+        # Slightly faster to generate per bootstrap iteration?
+        boot_samples = np.stack(
+            [
+                gev.rvs(shape, loc=loc, scale=scale, size=(n_time, n_lat, n_lon))
+                for _ in range(n_boot)
+            ]
+        )
+        boot_samples[boot_samples == 0] = np.nan
 
-    # Calculate GEV parameters for bootstrap replicates
-    lmoments = samlmom3_bootstrap_numba(boot_samples, bootstrap_dim=0)
-    gev_params = pargev_bootstrap_numba(lmoments)
+        # Calculate GEV parameters for bootstrap replicates
+        lmoments = samlmom3_bootstrap_numba(boot_samples, bootstrap_dim=0)
+        gev_params = pargev_bootstrap_numba(lmoments)
 
-    ds = xr.Dataset(
-        data_vars=dict(
-            loc=(["n_boot", lat_name, lon_name], gev_params[:, 0, :, :]),
-            scale=(["n_boot", lat_name, lon_name], gev_params[:, 1, :, :]),
-            shape=(["n_boot", lat_name, lon_name], gev_params[:, 2, :, :]),
-        ),
-        coords={
-            "n_boot": np.arange(n_boot),
-            lat_name: ds_fit_main[lat_name],
-            lon_name: ds_fit_main[lon_name],
-        },
-    )
+        ds = xr.Dataset(
+            data_vars=dict(
+                loc=(["n_boot", lat_name, lon_name], gev_params[:, 0, :, :]),
+                scale=(["n_boot", lat_name, lon_name], gev_params[:, 1, :, :]),
+                shape=(["n_boot", lat_name, lon_name], gev_params[:, 2, :, :]),
+            ),
+            coords={
+                "n_boot": np.arange(n_boot),
+                lat_name: ds_fit_main[lat_name],
+                lon_name: ds_fit_main[lon_name],
+            },
+        )
+    else:
+        ds = ds_fit_main
 
     # Return level calculations (for set periods)
     if periods_for_level is not None:
         for period in periods_for_level:
-            ds = xr_estimate_return_level(period, ds, 1.0, return_params=True)
+            if f"{period}yr_return_level" not in ds.data_vars:
+                ds = xr_estimate_return_level(period, ds, 1.0, return_params=True)
 
-    # Add coordinate labels
-    if return_samples:
+    # Return
+    if return_samples or n_boot == 1:
         return ds
     else:
         return ds.quantile([0.025, 0.975], dim="n_boot")
@@ -279,8 +283,8 @@ def gev_fit_single(
     years,
     stationary,
     fit_method,
-    periods_for_level,
-    levels_for_period,
+    periods_for_level=[10, 25, 50, 100],
+    levels_for_period=None,
     project_data_path=project_data_path,
     project_code_path=project_code_path,
 ):
@@ -364,10 +368,11 @@ def gev_fit_single_bootstrap(
     metric_id,
     proj_slice,
     hist_slice,
-    periods_for_level,
+    periods_for_level=[10, 25, 50, 100],
     stationary=True,
     fit_method="lmom",
-    n_boot=100,
+    n_boot_proj=100,
+    n_boot_hist=1,
     levels_for_period=None,
     project_data_path=project_data_path,
     project_code_path=project_code_path,
@@ -380,7 +385,7 @@ def gev_fit_single_bootstrap(
         # Check if done
         time_name = f"{proj_slice[0]}-{proj_slice[1]}_{hist_slice[0]}-{hist_slice[1]}"
         stat_name = "stat" if stationary else "nonstat"
-        store_name = f"{ensemble}_{gcm}_{member}_{ssp}_{time_name}_{stat_name}_{fit_method}_bootstrap.nc"
+        store_name = f"{ensemble}_{gcm}_{member}_{ssp}_{time_name}_{stat_name}_{fit_method}_nbootproj{n_boot_proj}_nboothist{n_boot_hist}.nc"
         store_path = f"{project_data_path}/extreme_value/original_grid/{metric_id}"
 
         if os.path.exists(f"{store_path}/{store_name}"):
@@ -394,7 +399,7 @@ def gev_fit_single_bootstrap(
             ssp=ssp,
             years=proj_slice,
             fit_method=fit_method,
-            n_boot=n_boot,
+            n_boot=n_boot_proj,
             store_path=store_path,
             periods_for_level=periods_for_level,
             levels_for_period=levels_for_period,
@@ -407,41 +412,54 @@ def gev_fit_single_bootstrap(
             ssp=ssp,
             years=hist_slice,
             fit_method=fit_method,
-            n_boot=n_boot,
+            n_boot=n_boot_hist,
             store_path=store_path,
             periods_for_level=periods_for_level,
             levels_for_period=levels_for_period,
         )
-
         # Take differences
-        ds_diff = ds_proj - ds_hist
+        if n_boot_hist > 1:
+            ds_diff = ds_proj - ds_hist
+            ds_chfc = ds_proj / ds_hist
+        else:
+            ds_diff = ds_proj - ds_hist.sel(quantile="main")
+            ds_chfc = ds_proj / ds_hist.sel(quantile="main")
 
         # Take quantiles
-        ds_hist = ds_hist.quantile([0.025, 0.975], dim="n_boot")
+        if n_boot_hist > 1:
+            ds_hist = ds_hist.quantile([0.025, 0.975], dim="n_boot")
+            ds_hist["quantile"] = ["q025", "q975"]
+
         ds_proj = ds_proj.quantile([0.025, 0.975], dim="n_boot")
         ds_diff = ds_diff.quantile([0.025, 0.975], dim="n_boot")
+        ds_chfc = ds_chfc.quantile([0.025, 0.975], dim="n_boot")
 
         # Merge
         ds_out = xr.concat(
             [
                 ds_proj.assign_coords(time="proj"),
-                ds_hist.assign_coords(time="hist"),
                 ds_diff.assign_coords(time="diff"),
+                ds_chfc.assign_coords(time="chfc"),
             ],
             dim="time",
         )
+        ds_out["quantile"] = ["q025", "q975"]
+
+        # Add historical only if n_boot_hist > 1
+        if n_boot_hist > 1:
+            ds_out = xr.concat([ds_out, ds_hist.assign_coords(time="hist")], dim="time")
 
         # Store
-        gcm_name, member_name = map_store_names(ensemble, gcm, member)
-        ds_out = ds_out.expand_dims(
-            {
-                "gcm": [gcm_name],
-                "member": [member_name],
-                "ssp": [ssp],
-                "ensemble": [ensemble],
-            }
-        )
-        ds_out["quantile"] = ["q025", "q975"]
+        if n_boot_hist > 1:
+            gcm_name, member_name = map_store_names(ensemble, gcm, member)
+            ds_out = ds_out.expand_dims(
+                {
+                    "gcm": [gcm_name],
+                    "member": [member_name],
+                    "ssp": [ssp],
+                    "ensemble": [ensemble],
+                }
+            )
         ds_out.attrs["historical_slice"] = f"{hist_slice[0]}-{hist_slice[1]}"
         ds_out.attrs["projection_slice"] = f"{proj_slice[0]}-{proj_slice[1]}"
         ds_out.to_netcdf(f"{store_path}/{store_name}")
@@ -468,6 +486,8 @@ def gev_fit_all(
     proj_years,
     hist_years,
     bootstrap,
+    n_boot_proj=100,
+    n_boot_hist=1,
     include_STAR_ESDM=True,
 ):
     """
@@ -484,6 +504,8 @@ def gev_fit_all(
             stationary=stationary,
             fit_method=fit_method,
             levels_for_period=levels_for_period,
+            n_boot_proj=n_boot_proj,
+            n_boot_hist=n_boot_hist,
         )
     else:
         gev_fit_func = partial(
