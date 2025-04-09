@@ -734,12 +734,7 @@ def plot_city_results(
         legend.set_zorder(10)
 
 
-def plot_uc_bars(
-    dfs,
-    ax,
-    labels,
-    legend=False,
-):
+def plot_uc_bars(dfs, ax, labels, legend=False, colors=None):
     # Get uc names
     uc_names = [
         "Scenario \n uncertainty",
@@ -748,6 +743,10 @@ def plot_uc_bars(
         "Downscaling \n uncertainty",
         "Fit \n uncertainty",
     ]
+
+    # Get colors
+    if colors is None:
+        colors = [f"C{i}" for i in range(len(dfs))]
 
     n = len(dfs)
 
@@ -772,7 +771,7 @@ def plot_uc_bars(
             positions[i],
             df["mean"],
             width=bar_width,
-            color=f"C{i}",
+            color=colors[i],
             label=labels[i],
             yerr=df["std"],
             capsize=3,
@@ -780,7 +779,8 @@ def plot_uc_bars(
         )
 
     ax.set_xticks((positions[0] + positions[-1]) / 2)
-    ax.set_xticklabels(uc_names, rotation=45, fontsize=10)
+    ax.set_xticklabels(uc_names, rotation=0)
+    ax.set_yticklabels([])
     ax.set_ylim([0, ax.get_ylim()[1]])
     ax.set_xlabel("")
     ax.grid(alpha=0.2, zorder=3)

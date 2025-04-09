@@ -21,16 +21,25 @@ def fit_gev_city(
     gcm,
     ssp,
     member,
-    hist_slice,
-    proj_slice,
     fit_method,
     stationary,
-    periods_for_level,
-    years=None,
-    return_period_years=None,
-    return_period_diffs=None,
+    periods_for_level=[10, 25, 50, 100],
+    hist_slice=[1950, 2014],  # only for stationary fits
+    proj_slice=[2050, 2100],  # only for stationary fits
+    years=[1950, 2100],  # only for non-stationary fits
+    return_period_years=[
+        1950,
+        1975,
+        2000,
+        2025,
+        2050,
+        2075,
+        2100,
+    ],  # only for non-stationary fits
+    return_period_diffs=[[1975, 2075]],  # only for non-stationary fits
     bootstrap="parametric",
-    n_boot=1000,
+    n_boot_hist=1,
+    n_boot_proj=1000,
     return_samples=False,
     project_data_path=project_data_path,
 ):
@@ -128,7 +137,7 @@ def fit_gev_city(
                     scale=hist_params[1],
                     shape=hist_params[2],
                     n_data=len(hist_data),
-                    n_boot=n_boot,
+                    n_boot=n_boot_hist,
                     fit_method=fit_method,
                     periods_for_level=periods_for_level,
                     return_samples=True,
@@ -140,7 +149,7 @@ def fit_gev_city(
                     scale=proj_params[1],
                     shape=proj_params[2],
                     n_data=len(proj_data),
-                    n_boot=n_boot,
+                    n_boot=n_boot_proj,
                     fit_method=fit_method,
                     periods_for_level=periods_for_level,
                     return_samples=True,
@@ -153,7 +162,7 @@ def fit_gev_city(
                     expected_length=expected_length,
                     starting_year=starting_year,
                     n_data=len(data),
-                    n_boot=n_boot,
+                    n_boot=n_boot_proj,
                     fit_method=fit_method,
                     periods_for_level=periods_for_level,
                     return_period_years=return_period_years,
@@ -275,7 +284,7 @@ def fit_gev_city(
                     "gcm": gcm,
                     "member": member,
                     "ssp": ssp,
-                    "n_boot": np.arange(n_boot),
+                    "n_boot": np.arange(n_boot_proj),
                     "loc_hist": bootstrap_params_hist[:, 0],
                     "scale_hist": bootstrap_params_hist[:, 1],
                     "shape_hist": bootstrap_params_hist[:, 2],
@@ -350,7 +359,7 @@ def fit_gev_city(
                     "gcm": gcm,
                     "member": member,
                     "ssp": ssp,
-                    "n_boot": np.arange(n_boot),
+                    "n_boot": np.arange(n_boot_proj),
                     "loc_intcp": bootstrap_params[:, 0],
                     "loc_trend": bootstrap_params[:, 1],
                     "scale": bootstrap_params[:, 2],
@@ -601,14 +610,23 @@ def fit_ensemble_gev_city(
     metric_id,
     stationary,
     fit_method,
-    periods_for_level,
+    periods_for_level=[10, 25, 50, 100],
     bootstrap="parametric",
-    n_boot=1000,
-    hist_slice=[1950, 2014],
-    proj_slice=[2050, 2100],
-    years=None,
-    return_period_years=None,
-    return_period_diffs=None,
+    n_boot_proj=1000,
+    n_boot_hist=1,
+    hist_slice=[1950, 2014],  # only for stationary fits
+    proj_slice=[2050, 2100],  # only for stationary fits
+    years=[1950, 2100],  # only for non-stationary fits
+    return_period_years=[
+        1950,
+        1975,
+        2000,
+        2025,
+        2050,
+        2075,
+        2100,
+    ],  # only for non-stationary fits
+    return_period_diffs=[[1975, 2075]],  # only for non-stationary fits
     store=True,
     return_samples=False,
     project_data_path=project_data_path,
@@ -669,9 +687,9 @@ def fit_ensemble_gev_city(
     stat_str = "stat" if stationary else "nonstat"
     sample_str = "_samples" if return_samples else ""
     if stationary:
-        file_name = f"{city}_{metric_id}_{hist_slice[0]}-{hist_slice[1]}_{proj_slice[0]}-{proj_slice[1]}_{fit_method}_{stat_str}_nboot{n_boot}{sample_str}.csv"
+        file_name = f"{city}_{metric_id}_{hist_slice[0]}-{hist_slice[1]}_{proj_slice[0]}-{proj_slice[1]}_{fit_method}_{stat_str}_nbootproj{n_boot_proj}_nboothist{n_boot_hist}{sample_str}.csv"
     else:
-        file_name = f"{city}_{metric_id}_{years[0]}-{years[1]}_{fit_method}_{stat_str}_nboot{n_boot}{sample_str}.csv"
+        file_name = f"{city}_{metric_id}_{years[0]}-{years[1]}_{fit_method}_{stat_str}_nboot{n_boot_proj}{sample_str}.csv"
 
     if os.path.exists(
         f"{project_data_path}/extreme_value/cities/original_grid/freq/{file_name}"
@@ -703,7 +721,8 @@ def fit_ensemble_gev_city(
                 stationary=stationary,
                 years=years,
                 bootstrap=bootstrap,
-                n_boot=n_boot,
+                n_boot_hist=n_boot_hist,
+                n_boot_proj=n_boot_proj,
                 return_period_years=return_period_years,
                 return_period_diffs=return_period_diffs,
                 return_samples=return_samples,

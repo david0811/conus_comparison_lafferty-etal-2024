@@ -1,11 +1,13 @@
 #!/bin/bash
 #SBATCH --output=../scripts/logs/jobs/%x.log
 #SBATCH --error=../scripts/logs/jobs/%x.err
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=20
-#SBATCH --mem=10GB
-#SBATCH --time=03:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks=20
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=80GB
+#SBATCH --time=04:00:00
 #SBATCH --partition=basic
+#SBATCH --account=pches_cr_default
 
 # Code directory
 CODE_DIR="/storage/home/dcl5300/work/current_projects/conus_comparison_lafferty-etal-2024"

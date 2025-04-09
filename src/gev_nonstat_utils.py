@@ -456,7 +456,7 @@ def fit_ns_gev_xr_bootstrap(
     fit_method="mle",
     periods_for_level=[10, 25, 50, 100],
     return_period_years=[1950, 1975, 2000, 2025, 2050, 2075, 2100],
-    return_period_diffs=[(2075, 1975)],
+    return_period_diffs=[(1975, 2075)],
     n_boot=100,
     return_samples=False,
 ):
@@ -472,6 +472,9 @@ def fit_ns_gev_xr_bootstrap(
         scalar = -1.0
     else:
         scalar = 1.0
+
+    # For testing
+    # params_in = params_in.isel(lat=slice(200, 400), lon=slice(400, 600))
 
     # Prepare dask data (chunking over space)
     dask_data = da.from_array(
@@ -505,10 +508,10 @@ def fit_ns_gev_xr_bootstrap(
     lon_name = "longitude" if "longitude" in params_in.dims else "lon"
     ds_out = xr.Dataset(
         data_vars={
-            "loc_intcp": (["n_boot", "lat", "lon"], out[:, 0, :, :]),
-            "loc_trend": (["n_boot", "lat", "lon"], out[:, 1, :, :]),
-            "scale": (["n_boot", "lat", "lon"], out[:, 2, :, :]),
-            "shape": (["n_boot", "lat", "lon"], out[:, 3, :, :]),
+            "loc_intcp": (["n_boot", lat_name, lon_name], out[:, 0, :, :]),
+            "loc_trend": (["n_boot", lat_name, lon_name], out[:, 1, :, :]),
+            "scale": (["n_boot", lat_name, lon_name], out[:, 2, :, :]),
+            "shape": (["n_boot", lat_name, lon_name], out[:, 3, :, :]),
         },
         coords={
             "n_boot": (["n_boot"], np.arange(n_boot)),
@@ -594,7 +597,7 @@ def fit_ns_gev_single(
     n_boot=100,
     periods_for_level=[10, 25, 50, 100],
     return_period_years=[1950, 1975, 2000, 2025, 2050, 2075, 2100],
-    return_period_diffs=[(2075, 1975)],
+    return_period_diffs=[(1975, 2075)],
     project_data_path=project_data_path,
     project_code_path=project_code_path,
 ):
@@ -604,7 +607,7 @@ def fit_ns_gev_single(
     try:
         # Check if done
         time_name = f"{years[0]}-{years[1]}"
-        boot_name = f"{n_boot}boot" if bootstrap else "main"
+        boot_name = f"nboot{n_boot}" if bootstrap else "main"
         store_name = f"{ensemble}_{gcm}_{member}_{ssp}_{time_name}_nonstat_{fit_method}_{boot_name}.nc"
         store_path = f"{project_data_path}/extreme_value/original_grid/{metric_id}"
 
