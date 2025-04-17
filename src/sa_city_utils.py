@@ -40,7 +40,11 @@ def get_city_timeseries(
             )
 
         # Update GARD GCMs
-        gcm_name = gcm.replace("canesm5", "CanESM5").replace("cesm2", "CESM2-LENS")
+        gcm_name = (
+            gcm.replace("canesm5", "CanESM5")
+            .replace("cesm2", "CESM2-LENS")
+            .replace("ecearth3", "EC-Earth3")
+        )
 
         # Fix LOCA CESM mapping
         if ensemble == "LOCA2" and gcm == "CESM2-LENS":

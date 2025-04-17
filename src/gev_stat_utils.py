@@ -90,18 +90,25 @@ def _gev_parametric_bootstrap_1d_stationary(
     params_out = np.full((n_boot, 3), np.nan)
     return_levels_out = np.full((n_boot, len(periods_for_level)), np.nan)
 
-    # Bootstrap sampling
-    if not np.isnan([loc, scale, shape]).any():
-        boot_samples = gev.rvs(shape, loc=loc, scale=scale, size=(n_boot, n_data))
-        for i in range(n_boot):
-            # Do the fit
-            params_out[i, :] = _fit_gev_1d_stationary(
-                boot_samples[i], n_data, fit_method=fit_method, numba=numba
-            )
-            # Return levels
-            return_levels_out[i, :] = estimate_return_level(
-                np.array(periods_for_level), *params_out[i]
-            )
+    # If n_boot is 1, return main results
+    if n_boot == 1:
+        params_out[0, :] = loc, scale, shape
+        return_levels_out[0, :] = estimate_return_level(
+            np.array(periods_for_level), *params_out[0]
+        )
+    else:
+        # Bootstrap sampling
+        if not np.isnan([loc, scale, shape]).any():
+            boot_samples = gev.rvs(shape, loc=loc, scale=scale, size=(n_boot, n_data))
+            for i in range(n_boot):
+                # Do the fit
+                params_out[i, :] = _fit_gev_1d_stationary(
+                    boot_samples[i], n_data, fit_method=fit_method, numba=numba
+                )
+                # Return levels
+                return_levels_out[i, :] = estimate_return_level(
+                    np.array(periods_for_level), *params_out[i]
+                )
 
     # Return 95% intervals
     if return_samples:
@@ -215,6 +222,13 @@ def fit_gev_xr_bootstrap(
     stat_name = "stat" if stationary else "nonstat"
     store_name = f"{ensemble}_{gcm}_{member}_{ssp_name}_{time_name}_{stat_name}_{fit_method}_main.nc"
 
+    # Get scalar
+    metric_id = store_path.split("/")[-1]
+    if metric_id == "min_tasmin":
+        scalar = -1.0
+    else:
+        scalar = 1.0
+
     assert os.path.exists(f"{store_path}/{store_name}"), (
         f"main fit {store_path}/{store_name} not found"
     )
@@ -265,7 +279,7 @@ def fit_gev_xr_bootstrap(
     if periods_for_level is not None:
         for period in periods_for_level:
             if f"{period}yr_return_level" not in ds.data_vars:
-                ds = xr_estimate_return_level(period, ds, 1.0, return_params=True)
+                ds = xr_estimate_return_level(period, ds, scalar, return_params=True)
 
     # Return
     if return_samples or n_boot == 1:

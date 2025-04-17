@@ -37,7 +37,7 @@ def fit_gev_city(
         2100,
     ],  # only for non-stationary fits
     return_period_diffs=[[1975, 2075]],  # only for non-stationary fits
-    bootstrap="parametric",
+    bootstrap=True,
     n_boot_hist=1,
     n_boot_proj=1000,
     return_samples=False,
@@ -129,7 +129,7 @@ def fit_gev_city(
         )
 
     # Do the bootstrap if desried
-    if bootstrap == "parametric":
+    if bootstrap:
         if stationary:
             bootstrap_params_hist, bootstrap_rls_hist = (
                 gevsu._gev_parametric_bootstrap_1d_stationary(
@@ -243,6 +243,13 @@ def fit_gev_city(
     # Return
     if return_samples:
         if stationary:
+            # Need to repeat historical results for each bootstrap sample if n_boot_hist = 1
+            if n_boot_hist == 1:
+                bootstrap_params_hist = np.repeat(
+                    bootstrap_params_hist, n_boot_proj, axis=0
+                )
+                bootstrap_rls_hist = np.repeat(bootstrap_rls_hist, n_boot_proj, axis=0)
+
             df_res = pd.DataFrame(
                 {
                     "ensemble": [ensemble],

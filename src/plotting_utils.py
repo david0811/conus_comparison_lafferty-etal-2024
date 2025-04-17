@@ -66,6 +66,7 @@ city_names = {
     "denver": "Denver",
     "nyc": "New York City",
     "sanfrancisco": "San Francisco",
+    "boston": "Boston",
 }
 
 uc_labels = {
@@ -116,8 +117,9 @@ def plot_uc_map(
     norm="uc_99w",
     cbar=False,
     vmax_uc=40,
-    title="auto",
+    title="",
     y_title=0.98,
+    filter_str="",
 ):
     # Read
     if analysis_type == "trends":
@@ -125,12 +127,15 @@ def plot_uc_map(
     elif analysis_type == "extreme_value":
         if stationary:
             stat_str = "stat"
-            file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{return_period}yr_return_level_{fit_method}_{stat_str}_{grid}grid_{regrid_method}.nc"
+            if time_str is not None:
+                file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{return_period}yr_return_level_{time_str}_{fit_method}_{stat_str}_{grid}grid_{regrid_method}{filter_str}.nc"
+            else:
+                file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{return_period}yr_return_level_{fit_method}_{stat_str}_{grid}grid_{regrid_method}{filter_str}.nc"
         else:
             stat_str = "nonstat"
-            file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{return_period}yr_return_level_{time_str}_{fit_method}_{stat_str}_{grid}grid_{regrid_method}.nc"
+            file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{return_period}yr_return_level_{time_str}_{fit_method}_{stat_str}_{grid}grid_{regrid_method}{filter_str}.nc"
     elif analysis_type == "averages":
-        file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{grid}grid_{regrid_method}.nc"
+        file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{grid}grid_{regrid_method}{filter_str}.nc"
 
     uc = xr.open_dataset(file_path)
 
@@ -156,11 +161,11 @@ def plot_uc_map(
         uc["fit_uc"] = uc["fit_uc"] / uc[norm]
 
     title_labels = {
-        "max_tasmax": f"{return_period} year return level: annual maximum temperature",
-        "max_cdd": f"{return_period} year return level: annual 1-day maximum CDD",
-        "max_hdd": f"{return_period} year return level: annual 1-day maximum HDD",
-        "max_pr": f"{return_period} year return level: annual 1-day maximum precipitation",
-        "min_tasmin": f"{return_period} year return level: annual minimum temperature",
+        "max_tasmax": "Annual maximum temperature",
+        "max_cdd": "Annual 1-day maximum CDD",
+        "max_hdd": "Annual 1-day maximum HDD",
+        "max_pr": "Annual 1-day maximum precipitation",
+        "min_tasmin": "Annual minimum temperature",
         "avg_tas": "Annual average temperature",
         "avg_tasmin": "Annual average daily minimum temperature",
         "avg_tasmax": "Annual average daily maximum temperature",
@@ -211,7 +216,7 @@ def plot_uc_map(
         step_size = np.ceil(step_size * 2) / 2  # Round up to nearest 0.5
         vmax = vmin + (step_size * nlevels)  # 10 steps total
 
-    if metric_id in ["max_pr", "sum_pr", "min_tasmin", "max_hdd", "sum_hdd"]:
+    if metric_id in ["max_pr", "sum_pr"]:
         cmap = "Blues"
     else:
         cmap = "Oranges"
@@ -296,10 +301,16 @@ def plot_uc_map(
         )
 
     if title is not None:
-        if title == "auto":
-            fig.suptitle(title_labels[metric_id], style="italic", y=y_title)
+        if title in ["", "a)", "b)", "c)", "d)", "e)"]:
+            fig.suptitle(
+                f"{title} {title_labels[metric_id]}",
+                style="italic",
+                y=y_title,
+                x=0.05,
+                ha="left",
+            )
         else:
-            fig.suptitle(title, style="italic", y=y_title)
+            fig.suptitle(title, style="italic", y=y_title, x=0.05, ha="left")
 
     return p
 
@@ -357,6 +368,7 @@ def plot_uc_maps(
             fig=subfigs[idp],
             axs=axs,
             plot_fit_uc=plot_fit_uc,
+            title=subfigure_labels[idp],
         )
 
     # Create a new axes for the colorbar at the bottom
@@ -506,9 +518,28 @@ def plot_city_results(
 ):
     # Read results
     sample_str = "_samples" if read_samples else ""
-    df = pd.read_csv(
-        f"{project_data_path}/extreme_value/cities/original_grid/freq/{city}_{metric_id}_{hist_slice}_{proj_slice}_{fit_method}_{stationary}_nboot{n_boot}{sample_str}.csv"
+    if stationary:
+        df = pd.read_csv(
+            f"{project_data_path}/extreme_value/cities/original_grid/freq/{city}_{metric_id}_{hist_slice}_{proj_slice}_{fit_method}_stat_nbootproj1000_nboothist1{sample_str}.csv"
+        )
+    else:
+        df = pd.read_csv(
+            f"{project_data_path}/extreme_value/cities/original_grid/freq/{city}_{metric_id}_{proj_slice}_{fit_method}_nonstat_nboot1000{sample_str}.csv"
+        )
+    # Update GARD GCMs
+    df["gcm"] = (
+        df["gcm"]
+        .replace("canesm5", "CanESM5")
+        .replace("cesm2", "CESM2-LENS")
+        .replace("ecearth3", "EC-Earth3")
     )
+
+    # Fix negation for min_tasmin, non-stationry models
+    if metric_id == "min_tasmin" and not stationary:
+        df.loc[df["n_boot"] != "main", plot_col] = -df.loc[
+            df["n_boot"] != "main", plot_col
+        ]
+
     df_uc = sacu.calculate_df_uc(df, plot_col)
     df = df.set_index(["ensemble", "gcm", "member", "ssp"])
 
@@ -539,8 +570,8 @@ def plot_city_results(
         "Fit \n uncertainty",
     ]
 
-    df_uc[df_uc["uncertainty_type"] != "ssp_uc"].plot.bar(
-        x="uncertainty_type", y="mean", yerr="std", ax=ax, legend=False
+    df_uc[~df_uc["uncertainty_type"].isin(["ssp_uc", "uc_99w"])].plot.bar(
+        x="uncertainty_type", y="mean", yerr="std", ax=ax, legend=False, capsize=3
     )
 
     # Tidy
@@ -730,7 +761,7 @@ def plot_city_results(
             )
             for ssp in ssp_colors.keys()
         ]
-        legend = ax.legend(handles=legend_elements, loc="lower right")
+        legend = ax.legend(handles=legend_elements)
         legend.set_zorder(10)
 
 
@@ -832,20 +863,21 @@ def plot_uc_rls(
         ds = []
         for return_period in return_periods:
             if stat_str == "stat":
-                file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{return_period}yr_return_level_{fit_method}_{stat_str}_{grid}grid_{regrid_method}.nc"
+                file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{return_period}yr_return_level_{time_str}_{fit_method}_{stat_str}_{grid}grid_{regrid_method}.nc"
             else:
                 file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{return_period}yr_return_level_{time_str}_{fit_method}_{stat_str}_{grid}grid_{regrid_method}.nc"
             ds.append(
                 xr.open_dataset(file_path).assign_coords(return_period=return_period)
             )
-        ds = xr.concat(ds, dim="return_period")
+        ds = xr.concat(ds, dim="return_period", coords="minimal")
+
+        # Mask out locations without all three ensembles
+        mask = ds.to_array().sum(dim="variable", skipna=False) >= 0.0
+        ds = ds.where(mask, drop=True)
 
         # Ready for plot
         if coord_or_mean == "mean":
-            df = (
-                ds.mean(dim=["lat", "lon"]).to_dataframe().droplevel("quantile")
-                # .drop(columns=["time", "ensemble"])
-            )
+            df = ds.mean(dim=["lat", "lon"]).to_dataframe().droplevel("quantile")
         else:
             df = (
                 ds.sel(
@@ -853,14 +885,13 @@ def plot_uc_rls(
                 )
                 .to_dataframe()
                 .droplevel("quantile")
-                # .drop(columns=["time", "ensemble"])
             )
         df_total_uc = df[total_uc]
 
         # Plot total UC first with lower alpha
         ax1 = axs[idm].twinx()
-        ax1.plot(df.index, df_total_uc, lw=2, color="black", alpha=0.5)
-        ax1.scatter(df.index, df_total_uc, s=50, marker="H", color="black", alpha=0.5)
+        # ax1.plot(df.index, df_total_uc, lw=2, color="black", alpha=0.5)
+        ax1.scatter(df.index, df_total_uc, s=50, marker="X", color="black", alpha=0.8)
         ax1.set_ylabel(
             f"Total uncertainty {gev_labels[metric_id]}", rotation=-90, va="bottom"
         )
@@ -908,9 +939,9 @@ def plot_uc_rls(
         Line2D(
             [0],
             [0],
-            marker="H",
-            lw=3,
-            alpha=0.5,
+            marker="X",
+            lw=0,
+            alpha=0.8,
             markersize=10,
             color="black",
             label="Total uncertainty",

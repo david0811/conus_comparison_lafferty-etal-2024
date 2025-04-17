@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH --output=./logs/jobs/eva_nonstat-boot-%a.log
-#SBATCH --error=./logs/jobs/eva_nonstat-boot-%a.err
+#SBATCH --output=./logs/jobs/eva_nonstat-boot-dd-%a.log
+#SBATCH --error=./logs/jobs/eva_nonstat-boot-dd-%a.err
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=3GB
 #SBATCH --partition=basic
-#SBATCH --time=2-00:00:00
+#SBATCH --time=5-00:00:00
 #SBATCH --account=pches_cr_default
 
 # This script creates a parameter file and submits a SLURM job for each climate output. It will
@@ -16,11 +16,13 @@ echo "Job started on $(hostname) at $(date)"
 #######################################################################
 # Set the metric IDs to search
 # METRIC_IDS=("max_pr" "max_tasmax" "min_tasmin" "max_cdd" "max_hdd")
-METRIC_IDS=("max_pr" "max_tasmax" "min_tasmin")
+# METRIC_IDS=("max_pr" "max_tasmax" "min_tasmin")
+METRIC_IDS=("min_tasmin" "max_cdd" "max_hdd")
+
 
 # Define allowed ensembles
-# ALLOWED_ENSEMBLES=("STAR-ESDM" "LOCA2" "GARD-LENS")
-ALLOWED_ENSEMBLES=("GARD-LENS" "LOCA2")
+ALLOWED_ENSEMBLES=("STAR-ESDM" "LOCA2" "GARD-LENS")
+# ALLOWED_ENSEMBLES=("STAR-ESDM")
 
 # Set bootstrap or not
 BOOTSTRAP=1
@@ -41,7 +43,7 @@ fi
 > $PARAM_FILE
 
 # Skip header line and read CSV file
-sed 1d "$CLIMATE_INFO_FILE" | while IFS=, read -r ensemble gcm member ssp remainder
+tac "$CLIMATE_INFO_FILE" | sed 1d | while IFS=, read -r ensemble gcm member ssp remainder
 do
     # Trim potential whitespace
     ensemble=$(echo "$ensemble" | xargs)
@@ -70,13 +72,13 @@ done
 
 # Count the number of jobs
 TOTAL_JOBS=$(wc -l < $PARAM_FILE)
-MAX_QUEUED=30  # Set to just below your submission limit
+MAX_QUEUED=10  # Set to just below your submission limit
 SLEEP_TIME=1800  # 30 minutes between checks
 
 for ((i=1; i<=$TOTAL_JOBS; i++)); do
     # Check current queue count
     while true; do
-        QUEUE_COUNT=$(squeue -u $USER -p basic | wc -l)
+        QUEUE_COUNT=$(squeue -u $USER -p open | wc -l)
         QUEUE_COUNT=$((QUEUE_COUNT - 1))  # Subtract header line
         
         if [ $QUEUE_COUNT -lt $MAX_QUEUED ]; then

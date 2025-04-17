@@ -17,7 +17,8 @@ def read_loca(
     bootstrap,
     cols_to_keep,
     analysis_type,
-    n_boot=100,
+    n_boot_proj=100,
+    n_boot_hist=1,
     _preprocess_func=lambda x: x,
 ):
     """
@@ -36,14 +37,16 @@ def read_loca(
 
     # Get file info
     stat_name = "stat" if stationary else "nonstat"
-    boot_name = boot_name = f"{n_boot}boot" if bootstrap else "main"
+    if stationary:
+        boot_name = (
+            f"nbootproj{n_boot_proj}_nboothist{n_boot_hist}" if bootstrap else "main"
+        )
+    else:
+        boot_name = f"nboot{n_boot_proj}" if bootstrap else "main"
     if analysis_type == "extreme_value":
-        if bootstrap:
-            file_info = f"{proj_slice}_{hist_slice}_{stat_name}_{fit_method}_{boot_name}{loca_regrid_str}"
-        else:
-            file_info = (
-                f"{proj_slice}_{stat_name}_{fit_method}_{boot_name}{loca_regrid_str}"
-            )
+        file_info = (
+            f"{proj_slice}_{stat_name}_{fit_method}_{boot_name}{loca_regrid_str}"
+        )
     elif analysis_type == "trends":
         file_info = f"{proj_slice}_{boot_name}*{loca_regrid_str}"
     elif analysis_type == "averages":
@@ -114,7 +117,8 @@ def read_star(
     bootstrap,
     cols_to_keep,
     analysis_type,
-    n_boot=100,
+    n_boot_proj=100,
+    n_boot_hist=1,
     _preprocess_func=lambda x: x,
 ):
     """
@@ -133,15 +137,17 @@ def read_star(
 
     # Get file info
     stat_name = "stat" if stationary else "nonstat"
-    boot_name = f"{n_boot}boot" if bootstrap else "main"
+    if stationary:
+        boot_name = (
+            f"nbootproj{n_boot_proj}_nboothist{n_boot_hist}" if bootstrap else "main"
+        )
+    else:
+        boot_name = f"nboot{n_boot_proj}" if bootstrap else "main"
 
     if analysis_type == "extreme_value":
-        if bootstrap:
-            file_info = f"{proj_slice}_{hist_slice}_{stat_name}_{fit_method}_{boot_name}{star_regrid_str}"
-        else:
-            file_info = (
-                f"{proj_slice}_{stat_name}_{fit_method}_{boot_name}{star_regrid_str}"
-            )
+        file_info = (
+            f"{proj_slice}_{stat_name}_{fit_method}_{boot_name}{star_regrid_str}"
+        )
     elif analysis_type == "trends":
         file_info = f"{proj_slice}_{boot_name}*{star_regrid_str}"
     elif analysis_type == "averages":
@@ -192,7 +198,8 @@ def read_gard(
     bootstrap,
     cols_to_keep,
     analysis_type,
-    n_boot=100,
+    n_boot_proj=100,
+    n_boot_hist=1,
     _preprocess_func=lambda x: x,
 ):
     """
@@ -211,14 +218,16 @@ def read_gard(
 
     # Get file info
     stat_name = "stat" if stationary else "nonstat"
-    boot_name = "bootstrap" if bootstrap else "main"
+    if stationary:
+        boot_name = (
+            f"nbootproj{n_boot_proj}_nboothist{n_boot_hist}" if bootstrap else "main"
+        )
+    else:
+        boot_name = f"nboot{n_boot_proj}" if bootstrap else "main"
     if analysis_type == "extreme_value":
-        if bootstrap:
-            file_info = f"{proj_slice}_{hist_slice}_{stat_name}_{fit_method}_{boot_name}{gard_regrid_str}"
-        else:
-            file_info = (
-                f"{proj_slice}_{stat_name}_{fit_method}_{boot_name}{gard_regrid_str}"
-            )
+        file_info = (
+            f"{proj_slice}_{stat_name}_{fit_method}_{boot_name}{gard_regrid_str}"
+        )
     elif analysis_type == "trends":
         file_info = f"{proj_slice}_{boot_name}*{gard_regrid_str}"
     elif analysis_type == "averages":
@@ -266,7 +275,8 @@ def read_all(
     bootstrap,
     cols_to_keep,
     analysis_type,
-    n_boot=100,
+    n_boot_proj=100,
+    n_boot_hist=1,
     _preprocess_func=lambda x: x,
 ):
     """
@@ -283,7 +293,8 @@ def read_all(
         bootstrap=bootstrap,
         cols_to_keep=cols_to_keep,
         analysis_type=analysis_type,
-        n_boot=n_boot,
+        n_boot_proj=n_boot_proj,
+        n_boot_hist=n_boot_hist,
         _preprocess_func=_preprocess_func,
     )
     ds_star = read_star(
@@ -297,7 +308,8 @@ def read_all(
         bootstrap=bootstrap,
         cols_to_keep=cols_to_keep,
         analysis_type=analysis_type,
-        n_boot=n_boot,
+        n_boot_proj=n_boot_proj,
+        n_boot_hist=n_boot_hist,
         _preprocess_func=_preprocess_func,
     )
     ds_gard = read_gard(
@@ -311,7 +323,8 @@ def read_all(
         bootstrap=bootstrap,
         cols_to_keep=cols_to_keep,
         analysis_type=analysis_type,
-        n_boot=n_boot,
+        n_boot_proj=n_boot_proj,
+        n_boot_hist=n_boot_hist,
         _preprocess_func=_preprocess_func,
     )
 
@@ -533,7 +546,7 @@ def compute_fit_uc(ds_loca, ds_gard, ds_star, var_name):
     )
 
     # Again filter due to regridding issues
-    fit_uc = (total_sum / total_count).where(total_count == total_count.max())
+    fit_uc = (total_sum / total_count).where(total_count > 10)
 
     return fit_uc
 
@@ -611,14 +624,18 @@ def uc_all(
     regrid_method,
     stationary,
     fit_method,
-    col_name,
+    col_name_main,
+    col_name_boot,
     proj_slice,
     hist_slice,
     return_metric=False,
     analysis_type="extreme_value",
-    n_boot=100,
-    compute_fit_uc=True,
-    _preprocess_func=lambda x: x,
+    n_boot_proj=100,
+    n_boot_hist=1,
+    include_fit_uc=True,
+    _preprocess_func_main=lambda x: x,
+    _preprocess_func_boot=lambda x: x,
+    filter_vals=None,
 ):
     """
     Perform the UC for all.
@@ -633,46 +650,65 @@ def uc_all(
         stationary=stationary,
         fit_method=fit_method,
         bootstrap=False,
-        cols_to_keep=[col_name],
+        cols_to_keep=[col_name_main],
         analysis_type=analysis_type,
-        n_boot=n_boot,
-        _preprocess_func=_preprocess_func,
+        n_boot_proj=n_boot_proj,
+        n_boot_hist=n_boot_hist,
+        _preprocess_func=_preprocess_func_main,
     )
 
+    # For some reason quantile is not present in some
+    if "quantile" not in ds_star.dims:
+        ds_star = ds_star.expand_dims({"quantile": ["main"]})
+
+    # Filter values if desired
+    if filter_vals is not None:
+        ds_loca = ds_loca.where(ds_loca[col_name_main] >= filter_vals[0])
+        ds_loca = ds_loca.where(ds_loca[col_name_main] <= filter_vals[1])
+
+        ds_gard = ds_gard.where(ds_gard[col_name_main] >= filter_vals[0])
+        ds_gard = ds_gard.where(ds_gard[col_name_main] <= filter_vals[1])
+
+        ds_star = ds_star.where(ds_star[col_name_main] >= filter_vals[0])
+        ds_star = ds_star.where(ds_star[col_name_main] <= filter_vals[1])
+
     # Compute any pre-processing if required
-    # ds_loca = (ds_loca - ds_loca.sel(ssp="historical")).drop_sel(
-    #     ssp="historical"
-    # )
-    # ds_gard = (ds_gard - ds_gard.sel(ssp="historical")).drop_sel(
-    #     ssp="historical"
-    # )
-    # ds_star = (ds_star - ds_star.sel(ssp="historical")).drop_sel(
-    #     ssp="historical"
-    # )
+    if analysis_type == "extreme_value":
+        if hist_slice is not None:
+            ds_loca = ds_loca - ds_loca.sel(ssp="historical")
+            ds_loca = ds_loca.drop_sel(ssp="historical")
+
+            ds_gard = ds_gard - ds_gard.sel(ssp="historical")
+            ds_gard = ds_gard.drop_sel(ssp="historical")
+
+            ds_star = ds_star - ds_star.sel(ssp="historical")
+            ds_star = ds_star.drop_sel(ssp="historical")
 
     # Compute GCM uncertainty
-    gcm_uc = compute_gcm_uc(ds_loca, ds_gard, ds_star, col_name)
+    gcm_uc = compute_gcm_uc(ds_loca, ds_gard, ds_star, col_name_main)
 
     # Compute SSP uncertainty
-    ssp_uc = compute_ssp_uc(ds_loca, ds_gard, ds_star, col_name)
-    ssp_uc_by_gcm = compute_ssp_uc(ds_loca, ds_gard, ds_star, col_name, by_gcm=True)
+    ssp_uc = compute_ssp_uc(ds_loca, ds_gard, ds_star, col_name_main)
+    ssp_uc_by_gcm = compute_ssp_uc(
+        ds_loca, ds_gard, ds_star, col_name_main, by_gcm=True
+    )
 
     # Compute internal variability uncertainty
-    iv_uc = compute_iv_uc(ds_loca, ds_gard, ds_star, col_name)
+    iv_uc = compute_iv_uc(ds_loca, ds_gard, ds_star, col_name_main)
 
     # Compute downscaling uncertainty
-    dsc_uc = compute_dsc_uc(ds_loca, ds_gard, ds_star, col_name)
+    dsc_uc = compute_dsc_uc(ds_loca, ds_gard, ds_star, col_name_main)
 
     # Compute total uncertainty
-    if not compute_fit_uc:
-        uc_99w = compute_tot_uc_main(ds_loca, ds_gard, ds_star, col_name)
+    if not include_fit_uc:
+        uc_99w = compute_tot_uc_main(ds_loca, ds_gard, ds_star, col_name_main)
 
         fit_uc = xr.zeros_like(uc_99w)
 
     del ds_loca, ds_star, ds_gard  # memory management
 
     # Fit uncertainty
-    if compute_fit_uc:
+    if include_fit_uc:
         # Read all: bootstrap
         ds_loca, ds_star, ds_gard = read_all(
             metric_id=metric_id,
@@ -683,34 +719,18 @@ def uc_all(
             stationary=stationary,
             fit_method=fit_method,
             bootstrap=True,
-            cols_to_keep=[col_name],
+            cols_to_keep=[col_name_boot],
             analysis_type=analysis_type,
-            n_boot=n_boot,
-            _preprocess_func=_preprocess_func,
+            n_boot_proj=n_boot_proj,
+            n_boot_hist=n_boot_hist,
+            _preprocess_func=_preprocess_func_boot,
         )
 
-        # # Pre-process if required
-        # if _preprocess_func is not None:
-        #     ds_loca = _preprocess_func(ds_loca)
-        #     ds_gard = _preprocess_func(ds_gard)
-        #     ds_star = _preprocess_func(ds_star)
-
-        # # Compute change if desired
-        # if analysis_type == "extreme_value":
-        #     if bool(hist_slice and proj_slice):
-        #         time_sel = "diff"
-        #     elif hist_slice is None:
-        #         time_sel = "proj"
-        #     elif proj_slice is None:
-        #         time_sel = "hist"
-        # elif analysis_type == "trends":
-        #     time_sel = None
-
         # Compute fit uncertainty
-        fit_uc = compute_fit_uc(ds_loca, ds_gard, ds_star, col_name)
+        fit_uc = compute_fit_uc(ds_loca, ds_gard, ds_star, col_name_boot)
 
         # Compute total uncertainty
-        uc_99w = compute_tot_uc_bootstrap(ds_loca, ds_gard, ds_star, col_name)
+        uc_99w = compute_tot_uc_bootstrap(ds_loca, ds_gard, ds_star, col_name_boot)
 
     uc = xr.merge(
         [
