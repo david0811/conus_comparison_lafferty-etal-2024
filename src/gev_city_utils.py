@@ -372,21 +372,22 @@ def fit_gev_city(
                     "scale": bootstrap_params[:, 2],
                     "shape": bootstrap_params[:, 3],
                     **{
-                        f"{period}yr_return_level_{return_period_year}": bootstrap_rls[
-                            :, i_period * len(return_period_years) + i_year
-                        ]
+                        f"{period}yr_return_level_{return_period_year}": scalar
+                        * bootstrap_rls[:, i_period * len(return_period_years) + i_year]
                         for i_period, period in enumerate(periods_for_level)
                         for i_year, return_period_year in enumerate(return_period_years)
                     },
                     **{
-                        f"{period}yr_return_level_diff_{return_period_diff[1]}-{return_period_diff[0]}": bootstrap_rl_diffs[
+                        f"{period}yr_return_level_diff_{return_period_diff[1]}-{return_period_diff[0]}": scalar
+                        * bootstrap_rl_diffs[
                             :, i_period * len(return_period_diffs) + i_diff
                         ]
                         for i_period, period in enumerate(periods_for_level)
                         for i_diff, return_period_diff in enumerate(return_period_diffs)
                     },
                     **{
-                        f"{period}yr_return_level_chfc_{return_period_diff[1]}-{return_period_diff[0]}": bootstrap_rl_chfcs[
+                        f"{period}yr_return_level_chfc_{return_period_diff[1]}-{return_period_diff[0]}": scalar
+                        * bootstrap_rl_chfcs[
                             :, i_period * len(return_period_diffs) + i_diff
                         ]
                         for i_period, period in enumerate(periods_for_level)

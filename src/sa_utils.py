@@ -44,9 +44,12 @@ def read_loca(
     else:
         boot_name = f"nboot{n_boot_proj}" if bootstrap else "main"
     if analysis_type == "extreme_value":
-        file_info = (
-            f"{proj_slice}_{stat_name}_{fit_method}_{boot_name}{loca_regrid_str}"
-        )
+        if stationary and bootstrap:
+            file_info = f"{proj_slice}_{hist_slice}_{stat_name}_{fit_method}_{boot_name}{loca_regrid_str}"
+        else:
+            file_info = (
+                f"{proj_slice}_{stat_name}_{fit_method}_{boot_name}{loca_regrid_str}"
+            )
     elif analysis_type == "trends":
         file_info = f"{proj_slice}_{boot_name}*{loca_regrid_str}"
     elif analysis_type == "averages":
@@ -145,9 +148,12 @@ def read_star(
         boot_name = f"nboot{n_boot_proj}" if bootstrap else "main"
 
     if analysis_type == "extreme_value":
-        file_info = (
-            f"{proj_slice}_{stat_name}_{fit_method}_{boot_name}{star_regrid_str}"
-        )
+        if stationary and bootstrap:
+            file_info = f"{proj_slice}_{hist_slice}_{stat_name}_{fit_method}_{boot_name}{star_regrid_str}"
+        else:
+            file_info = (
+                f"{proj_slice}_{stat_name}_{fit_method}_{boot_name}{star_regrid_str}"
+            )
     elif analysis_type == "trends":
         file_info = f"{proj_slice}_{boot_name}*{star_regrid_str}"
     elif analysis_type == "averages":
@@ -225,9 +231,12 @@ def read_gard(
     else:
         boot_name = f"nboot{n_boot_proj}" if bootstrap else "main"
     if analysis_type == "extreme_value":
-        file_info = (
-            f"{proj_slice}_{stat_name}_{fit_method}_{boot_name}{gard_regrid_str}"
-        )
+        if stationary and bootstrap:
+            file_info = f"{proj_slice}_{hist_slice}_{stat_name}_{fit_method}_{boot_name}{gard_regrid_str}"
+        else:
+            file_info = (
+                f"{proj_slice}_{stat_name}_{fit_method}_{boot_name}{gard_regrid_str}"
+            )
     elif analysis_type == "trends":
         file_info = f"{proj_slice}_{boot_name}*{gard_regrid_str}"
     elif analysis_type == "averages":
@@ -572,8 +581,9 @@ def compute_tot_uc_main(ds_loca, ds_gard, ds_star, var_name):
 
     # Measures of uncertainty
     uc_99w = ds_stacked.quantile(0.995, dim="z") - ds_stacked.quantile(0.005, dim="z")
+    uc_range = ds_stacked.max(dim="z") - ds_stacked.min(dim="z")
 
-    return uc_99w
+    return uc_99w, uc_range
 
 
 def compute_tot_uc_bootstrap(ds_loca, ds_gard, ds_star, var_name):
@@ -700,10 +710,11 @@ def uc_all(
     dsc_uc = compute_dsc_uc(ds_loca, ds_gard, ds_star, col_name_main)
 
     # Compute total uncertainty
+    uc_99w_main, uc_range_main = compute_tot_uc_main(
+        ds_loca, ds_gard, ds_star, col_name_main
+    )
     if not include_fit_uc:
-        uc_99w = compute_tot_uc_main(ds_loca, ds_gard, ds_star, col_name_main)
-
-        fit_uc = xr.zeros_like(uc_99w)
+        fit_uc = xr.zeros_like(uc_99w_main)
 
     del ds_loca, ds_star, ds_gard  # memory management
 
@@ -730,7 +741,7 @@ def uc_all(
         fit_uc = compute_fit_uc(ds_loca, ds_gard, ds_star, col_name_boot)
 
         # Compute total uncertainty
-        uc_99w = compute_tot_uc_bootstrap(ds_loca, ds_gard, ds_star, col_name_boot)
+        uc_99w_boot = compute_tot_uc_bootstrap(ds_loca, ds_gard, ds_star, col_name_boot)
 
     uc = xr.merge(
         [
@@ -740,7 +751,9 @@ def uc_all(
             iv_uc.rename("iv_uc"),
             dsc_uc.rename("dsc_uc"),
             fit_uc.rename("fit_uc"),
-            uc_99w.rename("uc_99w"),
+            uc_99w_main.rename("uc_99w_main"),
+            uc_range_main.rename("uc_range_main"),
+            uc_99w_boot.rename("uc_99w_boot"),
         ]
     )
 
