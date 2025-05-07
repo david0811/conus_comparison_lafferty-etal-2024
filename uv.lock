@@ -387,7 +387,7 @@ name = "click"
 version = "8.1.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "platform_system == 'Windows'" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/96/d3/f04c7bfcf5c1862a2a5b845c6b2b360488cf47af55dfa79c98f6a6bf98b5/click-8.1.7.tar.gz", hash = "sha256:ca9853ad459e787e2192211578cc907e7594e294c7ccc834310722b41b9ca6de", size = 336121 }
 wheels = [
@@ -500,6 +500,7 @@ dependencies = [
     { name = "pymc-extras" },
     { name = "pytensor" },
     { name = "rinoh-mscorefontinstaller" },
+    { name = "salem" },
     { name = "scipy" },
     { name = "seaborn" },
     { name = "xarray" },
@@ -529,6 +530,7 @@ requires-dist = [
     { name = "pymc-extras", specifier = ">=0.2.1" },
     { name = "pytensor", specifier = ">=2.26.4" },
     { name = "rinoh-mscorefontinstaller", specifier = ">=0.1.0" },
+    { name = "salem", specifier = ">=0.3.11" },
     { name = "scipy", specifier = ">=1.14.1" },
     { name = "seaborn", specifier = ">=0.13.2" },
     { name = "xarray", specifier = ">=2024.10.0" },
@@ -882,7 +884,7 @@ name = "ipykernel"
 version = "6.29.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "appnope", marker = "platform_system == 'Darwin'" },
+    { name = "appnope", marker = "sys_platform == 'darwin'" },
     { name = "comm" },
     { name = "debugpy" },
     { name = "ipython" },
@@ -2444,6 +2446,24 @@ wheels = [
 ]
 
 [[package]]
+name = "salem"
+version = "0.3.11"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "joblib" },
+    { name = "netcdf4" },
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "pyproj" },
+    { name = "scipy" },
+    { name = "xarray" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c8/d7/890a4b643ecfafcee50bea3b4713f8556f8e285ee3508263b259ff9eea8b/salem-0.3.11.tar.gz", hash = "sha256:26574b9f9e3b6bb0a6423f3d0aa697e6d659e0916afc8010b07e7d578523e34a", size = 118248 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/eb/d1/8a9108a806d2aedd7051555559408488be656c0d05ee3ff8b58305832cd9/salem-0.3.11-py2.py3-none-any.whl", hash = "sha256:25d613cda1d6c907ece1316812791ce1e988e4b10ccb224e3b69ca46055154a8", size = 86148 },
+]
+
+[[package]]
 name = "scikit-learn"
 version = "1.6.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2700,7 +2720,7 @@ name = "tqdm"
 version = "4.67.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "platform_system == 'Windows'" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a8/4b/29b4ef32e036bb34e4ab51796dd745cdba7ed47ad142a9f4a1eb8e0c744d/tqdm-4.67.1.tar.gz", hash = "sha256:f8aef9c52c08c13a65f30ea34f4e5aac3fd1a34959879d7e59e63027286627f2", size = 169737 }
 wheels = [

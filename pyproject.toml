@@ -30,6 +30,7 @@ dependencies = [
     "seaborn>=0.13.2",
     "xarray-regrid>=0.4.0",
     "xarray>=2024.10.0",
+    "salem>=0.3.11",
 ]
 
 [tool.ruff]

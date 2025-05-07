@@ -1,5 +1,6 @@
 import numpy as np
 import xarray as xr
+import salem
 
 
 ###########################
@@ -7,8 +8,15 @@ import xarray as xr
 ###########################
 def transform_precipitation(ds_in, var_id):
     if var_id == "pr":
-        if "pr" not in ds_in.variables and "pcp" in ds_in.variables:
-            ds_in = ds_in.rename({"pcp": "pr"})
+        if "pr" not in ds_in.variables:
+            if "pcp" in ds_in.variables:
+                # STAR
+                ds_in = ds_in.rename({"pcp": "pr"})
+            elif "prcp" in ds_in.variables:
+                # Obs
+                ds_in = ds_in.rename({"prcp": "pr"})
+            else:
+                raise ValueError(f"No precipitation variable found in {ds_in.name}")
 
         ds_in.pr.attrs["units"] = "mm"
     return ds_in
@@ -23,22 +31,37 @@ def transform_temperature(ds_in, var_id):
             # STAR
             if "t_mean" in ds_in.variables:  # STAR
                 ds_in = ds_in.rename({"t_mean": "tas"})
+            # Obs
+            elif "tmean" in ds_in.variables:
+                ds_in = ds_in.rename({"tmean": "tas"})
             # LOCA2
             elif "tasmin" in ds_in.variables and "tasmax" in ds_in.variables:
                 ds_in["tas"] = (ds_in["tasmax"] + ds_in["tasmin"]) / 2
     elif var_id == "tasmin":
         if "tasmin" not in ds_in.variables:
-            # STAR
-            ds_in["tasmin"] = ds_in["t_mean"] - ds_in["t_range"] / 2.0
+            if "tmin" in ds_in.variables:
+                # Obs
+                ds_in = ds_in.rename({"tmin": "tasmin"})
+            else:
+                # STAR
+                ds_in["tasmin"] = ds_in["t_mean"] - ds_in["t_range"] / 2.0
     elif var_id == "tasmax":
         if "tasmax" not in ds_in.variables:
-            # STAR
-            ds_in["tasmax"] = ds_in["t_mean"] + ds_in["t_range"] / 2.0
+            if "tmax" in ds_in.variables:
+                # Obs
+                ds_in = ds_in.rename({"tmax": "tasmax"})
+            else:
+                # STAR
+                ds_in["tasmax"] = ds_in["t_mean"] + ds_in["t_range"] / 2.0
     elif var_id in ["cdd", "hdd"]:
-        # GARD-LENS
         if "tasmin" not in ds_in.variables or "tasmax" not in ds_in.variables:
-            ds_in["tasmin"] = ds_in["t_mean"] - ds_in["t_range"] / 2.0
-            ds_in["tasmax"] = ds_in["t_mean"] + ds_in["t_range"] / 2.0
+            if "tmin" in ds_in.variables and "tmax" in ds_in.variables:
+                # Obs
+                ds_in = ds_in.rename({"tmin": "tasmin", "tmax": "tasmax"})
+            else:
+                # STAR
+                ds_in["tasmin"] = ds_in["t_mean"] - ds_in["t_range"] / 2.0
+                ds_in["tasmax"] = ds_in["t_mean"] + ds_in["t_range"] / 2.0
 
     return ds_in
 
@@ -164,3 +187,70 @@ def calculate_dd_max(ds_in, var_id):
         ds_out = hdd_ufunc(ds_in["tasmin"], ds_in["tasmax"]).resample(time="YE").max()
 
     return xr.Dataset({var_id: ds_out})
+
+
+###############################
+# TGW specific functions
+###############################
+def tgw_hourly_to_daily(
+    file_path, var_id_in, var_id_out, agg_func, log_path, threshold=thresh_c
+):
+    """
+    Convert hourly TGW data to daily data using the provided aggregation function.
+
+    Parameters:
+    -----------
+    file_path : str
+        Path to the WRF output file
+    var_id_in : str
+        Input variable ID in the WRF dataset
+    var_id_out : str
+        Output variable ID for the resulting dataset
+    agg_func : str
+        Aggregation function to apply ('max', 'min', 'mean', 'sum', 'cdd', 'hdd')
+    log_path : str
+        Path to write error logs
+    threshold : float, optional
+        Temperature threshold in degrees Celsius for CDD/HDD calculations (default: 18.0)
+
+    Returns:
+    --------
+    xarray.Dataset
+        Daily aggregated dataset
+    """
+    try:
+        #  Read
+        ds = salem.open_wrf_dataset(file_path)[var_id_in]
+
+        # Correct naming
+        ds = xr.Dataset({var_id_out: ds})
+
+        # Aggregate
+        if agg_func == "max":
+            ds_out = ds.resample(time="D").max()
+        elif agg_func == "min":
+            ds_out = ds.resample(time="D").min()
+        elif agg_func == "mean":
+            ds_out = ds.resample(time="D").mean()
+        elif agg_func == "sum":
+            ds_out = ds.resample(time="D").sum()
+        elif agg_func == "cdd":
+            # For CDD: max(0, T - threshold) for each hour, then sum for the day
+            # Only count degrees above the threshold
+            cdd = ds.clip(min=threshold) - threshold
+            ds_out = cdd.resample(time="D").sum()
+        elif agg_func == "hdd":
+            # For HDD: max(0, threshold - T) for each hour, then sum for the day
+            # Only count degrees below the threshold
+            hdd = threshold - ds.clip(max=threshold)
+            ds_out = hdd.resample(time="D").sum()
+        else:
+            raise ValueError(f"Invalid aggregation function: {agg_func}")
+
+    except Exception as e:
+        print(f"Error reading {file_path}: {e}")
+        with open(f"{log_path}/{file_path.split('/')[-1]}.log", "a") as f:
+            f.write(f"Error reading {file_path}: {e}\n")
+            return None
+
+    return ds_out
