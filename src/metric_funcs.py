@@ -1,6 +1,5 @@
 import numpy as np
 import xarray as xr
-import salem
 
 
 ###########################
@@ -85,7 +84,7 @@ def calculate_max(ds_in, var_id):
     # Might want to calculate temp or precip max
     if var_id == "pr":
         ds_in = transform_precipitation(ds_in, var_id)
-    else:
+    elif var_id in ["tas", "tasmin", "tasmax"]:
         ds_in = transform_temperature(ds_in, var_id)
 
     ds_out = ds_in[[var_id]].resample(time="YE").max()
@@ -219,6 +218,8 @@ def tgw_hourly_to_daily(
         Daily aggregated dataset
     """
     try:
+        import salem
+
         #  Read
         ds = salem.open_wrf_dataset(file_path)[var_id_in]
 

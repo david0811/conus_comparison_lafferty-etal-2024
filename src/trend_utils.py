@@ -99,7 +99,7 @@ def trend_fit_single(
         else:
             ssp_name = ssp
         time_name = f"{years[0]}-{years[1]}" if years is not None else "all"
-        boot_name = f"bootstrap{n_boot}" if n_boot is not None else "main"
+        boot_name = f"nboot{n_boot}" if n_boot is not None else "main"
         store_name = f"{ensemble}_{gcm}_{member}_{ssp_name}_{time_name}_{boot_name}.nc"
 
         if os.path.exists(f"{store_path}/{store_name}"):

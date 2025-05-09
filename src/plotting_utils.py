@@ -67,6 +67,7 @@ city_names = {
     "nyc": "New York City",
     "sanfrancisco": "San Francisco",
     "boston": "Boston",
+    "nashville": "Nashville",
 }
 
 uc_labels = {
@@ -114,7 +115,7 @@ def plot_uc_map(
     regrid_method="nearest",
     fig=None,
     axs=None,
-    norm="uc_99w",
+    norm="uc_99w_main",
     cbar=False,
     vmax_uc=40,
     title="",
@@ -176,8 +177,9 @@ def plot_uc_map(
 
     norm_labels = {
         "uc_99w": "99% range",
-        "uc_95w": "95% range",
-        "uc_range": "Total range",
+        "uc_99w_main": "99% range",
+        "uc_95w_main": "95% range",
+        "uc_range_main": "Total range",
     }
 
     if axs is None:
@@ -329,7 +331,7 @@ def plot_uc_maps(
     suptitle=None,
     plot_fit_uc=False,
     regrid_method="nearest",
-    norm="uc_99w",
+    norm="uc_99w_main",
     vmax_uc=40,
     y_title=1.08,
     y_suptitle=1.07,
@@ -570,7 +572,7 @@ def plot_city_results(
         "Fit \n uncertainty",
     ]
 
-    df_uc[~df_uc["uncertainty_type"].isin(["ssp_uc", "uc_99w"])].plot.bar(
+    df_uc[df_uc["uncertainty_type"].isin(uc_labels.keys())].plot.bar(
         x="uncertainty_type", y="mean", yerr="std", ax=ax, legend=False, capsize=3
     )
 
@@ -781,15 +783,15 @@ def plot_uc_bars(dfs, ax, labels, legend=False, colors=None):
 
     n = len(dfs)
 
-    # Normalize by uc_99w
+    # Normalize by uc_99w_main
     for i in range(n):
-        if "uc_99w" not in dfs[i].index:
+        if "uc_99w_main" not in dfs[i].index:
             dfs[i] = dfs[i].set_index("uncertainty_type")
-        dfs[i] = dfs[i].apply(lambda x: x / dfs[i].loc["uc_99w"]["mean"])
+        dfs[i] = dfs[i].apply(lambda x: x / dfs[i].loc["uc_99w_main"]["mean"])
 
     # Make sure only one SSP type
     for i in range(n):
-        dfs[i] = dfs[i].drop(["ssp_uc", "uc_99w"])
+        dfs[i] = dfs[i].drop(["ssp_uc", "uc_99w_main"])
 
     # Get bar positioning
     bar_width = 1 / (n * 1.5)
@@ -832,7 +834,7 @@ def plot_uc_rls(
     stat_str,
     grid,
     regrid_method,
-    total_uc="uc_99w",
+    total_uc="uc_99w_main",
     return_periods=[10, 25, 50, 100],
     metric_ids=gev_metric_ids[:3],
     title=None,

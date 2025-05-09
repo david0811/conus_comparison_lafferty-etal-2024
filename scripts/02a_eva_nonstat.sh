@@ -5,7 +5,7 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=3GB
 #SBATCH --partition=basic
-#SBATCH --time=5-00:00:00
+#SBATCH --time=6-00:00:00
 #SBATCH --account=pches_cr_default
 
 # This script creates a parameter file and submits a SLURM job for each climate output. It will
@@ -73,7 +73,7 @@ done
 # Count the number of jobs
 TOTAL_JOBS=$(wc -l < $PARAM_FILE)
 MAX_QUEUED=10  # Set to just below your submission limit
-SLEEP_TIME=1800  # 30 minutes between checks
+SLEEP_TIME=3600  # 1 hour between checks
 
 for ((i=1; i<=$TOTAL_JOBS; i++)); do
     # Check current queue count

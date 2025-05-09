@@ -286,15 +286,22 @@ def calculate_df_uc(df, plot_col, n_min_members=5):
     # Total uncertainty
     if "n_boot" in df.columns:
         df_samples = df[df["n_boot"] != "main"]
-        uc_99w = df_samples[plot_col].quantile(0.995) - df_samples[plot_col].quantile(
+        uc_99w_boot = df_samples[plot_col].quantile(0.995) - df_samples[
+            plot_col
+        ].quantile(0.005)
+        uc_99w_main = df_main[plot_col].quantile(0.995) - df_main[plot_col].quantile(
             0.005
         )
     elif "quantile" in df.columns:
         upper = df[df["quantile"] == "q975"][plot_col].quantile(0.995)
         lower = df[df["quantile"] == "q025"][plot_col].quantile(0.005)
-        uc_99w = upper - lower
+        uc_99w_boot = upper - lower
+        uc_99w_main = df_main[plot_col].quantile(0.995) - df_main[plot_col].quantile(
+            0.005
+        )
     else:
-        uc_99w = df[plot_col].quantile(0.995) - df[plot_col].quantile(0.005)
+        uc_99w_main = df[plot_col].quantile(0.995) - df[plot_col].quantile(0.005)
+        uc_99w_boot = np.nan
 
     # Fit uncertainty if included
     fit_uc = get_quantile_range(
@@ -313,9 +320,10 @@ def calculate_df_uc(df, plot_col, n_min_members=5):
                 "ssp_uc_by_gcm",
                 "gcm_uc",
                 "iv_uc",
-                "ds_uc",
+                "dsc_uc",
                 "fit_uc",
-                "uc_99w",
+                "uc_99w_boot",
+                "uc_99w_main",
             ],
             "mean": [
                 ssp_uc_mean,
@@ -324,7 +332,8 @@ def calculate_df_uc(df, plot_col, n_min_members=5):
                 iv_uc_mean,
                 ds_uc_mean,
                 fit_uc_mean,
-                uc_99w,
+                uc_99w_boot,
+                uc_99w_main,
             ],
             "std": [
                 ssp_uc_std,
@@ -333,7 +342,8 @@ def calculate_df_uc(df, plot_col, n_min_members=5):
                 iv_uc_std,
                 ds_uc_std,
                 fit_uc_std,
-                np.nan,
+                uc_99w_boot,
+                uc_99w_main,
             ],
         }
     )
@@ -573,7 +583,7 @@ def calculate_df_uc(df, plot_col, n_min_members=5):
 #             "ssp_uc_by_gcm": [ssp_uc_by_gcm],
 #             "gcm_uc": [gcm_uc],
 #             "iv_uc": [iv_uc],
-#             "ds_uc": [ds_uc],
+#             "dsc_uc": [ds_uc],
 #             "gev_uc": [gev_uc],
 #         }
 #     )

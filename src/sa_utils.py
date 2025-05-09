@@ -682,7 +682,8 @@ def uc_all(
         ds_star = ds_star.where(ds_star[col_name_main] >= filter_vals[0])
         ds_star = ds_star.where(ds_star[col_name_main] <= filter_vals[1])
 
-    # Compute any pre-processing if required
+    # For the best fir results, future and hisorical are stored separately
+    # so we need to subtract if change is desired (indicated by hist_slice is not None)
     if analysis_type == "extreme_value":
         if hist_slice is not None:
             ds_loca = ds_loca - ds_loca.sel(ssp="historical")
