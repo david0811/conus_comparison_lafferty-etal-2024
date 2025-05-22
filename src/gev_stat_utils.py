@@ -161,7 +161,7 @@ def fit_gev_xr(
 
     fit_params = xr.apply_ufunc(
         fit_gev_1d,
-        ds,
+        ds * scalar,
         input_core_dims=[["time"]],
         output_core_dims=output_core_dims,
         vectorize=True,
@@ -214,7 +214,7 @@ def fit_gev_xr_bootstrap(
     of negating the shape parameter relative to other sources.
     """
     # Read main fit results
-    if years == [1950, 2014]:
+    if years == [1950, 2014] and ssp.startswith("ssp"):
         ssp_name = "historical"
     else:
         ssp_name = ssp
@@ -237,8 +237,12 @@ def fit_gev_xr_bootstrap(
     if n_boot > 1:
         # Generate bootstrap sample (careful memory requirements!)
         # Get dimensions for latitude and longitude, accounting for different naming conventions
-        lat_name = "latitude" if "latitude" in ds_fit_main.dims else "lat"
-        lon_name = "longitude" if "longitude" in ds_fit_main.dims else "lon"
+        if ensemble == "TGW":
+            lat_name = "south_north"
+            lon_name = "west_east"
+        else:
+            lat_name = "latitude" if "latitude" in ds_fit_main.dims else "lat"
+            lon_name = "longitude" if "longitude" in ds_fit_main.dims else "lon"
         n_lat = len(ds_fit_main[lat_name])
         n_lon = len(ds_fit_main[lon_name])
         n_time = years[1] - years[0] + 1

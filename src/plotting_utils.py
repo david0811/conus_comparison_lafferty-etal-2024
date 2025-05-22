@@ -8,8 +8,11 @@ import xarray as xr
 from matplotlib.lines import Line2D
 
 import sa_city_utils as sacu
-from utils import gard_gcms, gev_metric_ids
-from utils import roar_data_path as project_data_path
+from utils import (
+    gard_gcms,
+    gev_metric_ids,
+    roar_data_path as project_data_path,
+)
 
 ssp_colors = {
     "ssp245": "#1b9e77",
@@ -505,11 +508,15 @@ def plot_city_results(
     city,
     metric_id,
     plot_col,
-    hist_slice,
-    proj_slice,
     fit_method,
     stationary,
     axs,
+    hist_slice="1950-2014",
+    proj_slice="2050-2100",
+    tgw_hist_slice="1980-2019",
+    tgw_proj_slice="2049-2099",
+    years="1950-2100",  # non-stationary only
+    tgw_years="1980-2099",  # non-stationary only
     read_samples=False,
     n_boot=1000,
     n_min_members=5,
@@ -524,9 +531,21 @@ def plot_city_results(
         df = pd.read_csv(
             f"{project_data_path}/extreme_value/cities/original_grid/freq/{city}_{metric_id}_{hist_slice}_{proj_slice}_{fit_method}_stat_nbootproj1000_nboothist1{sample_str}.csv"
         )
+        df_tgw = pd.read_csv(
+            f"{project_data_path}/extreme_value/cities/original_grid/freq/TGW_{city}_{metric_id}_{tgw_hist_slice}_{tgw_proj_slice}_{fit_method}_stat_nbootproj1000_nboothist1{sample_str}.csv"
+        ).drop_duplicates()
+        df_index = pd.read_csv(
+            f"{project_data_path}/extreme_value/cities/original_grid/freq/{city}_max_tasmax_{hist_slice}_{proj_slice}_{fit_method}_stat_nbootproj1000_nboothist1{sample_str}.csv"
+        )
     else:
         df = pd.read_csv(
-            f"{project_data_path}/extreme_value/cities/original_grid/freq/{city}_{metric_id}_{proj_slice}_{fit_method}_nonstat_nboot1000{sample_str}.csv"
+            f"{project_data_path}/extreme_value/cities/original_grid/freq/{city}_{metric_id}_{years}_{fit_method}_nonstat_nboot1000{sample_str}.csv"
+        )
+        df_tgw = pd.read_csv(
+            f"{project_data_path}/extreme_value/cities/original_grid/freq/TGW_{city}_{metric_id}_{tgw_years}_{fit_method}_nonstat_nboot1000{sample_str}.csv"
+        ).drop_duplicates()
+        df_index = pd.read_csv(
+            f"{project_data_path}/extreme_value/cities/original_grid/freq/{city}_max_tasmax_{years}_{fit_method}_nonstat_nboot1000{sample_str}.csv"
         )
     # Update GARD GCMs
     df["gcm"] = (
@@ -544,6 +563,8 @@ def plot_city_results(
 
     df_uc = sacu.calculate_df_uc(df, plot_col)
     df = df.set_index(["ensemble", "gcm", "member", "ssp"])
+    df_tgw = df_tgw.set_index(["ensemble", "gcm", "member", "ssp"])
+    df_index = df_index.set_index(["ensemble", "gcm", "member", "ssp"])
 
     # Make figure if needed
     if axs is None:
@@ -597,7 +618,54 @@ def plot_city_results(
     label_names = []
     label_idy = []
 
+    ############################
+    # TGW
+    ############################
+    ensemble = "TGW"
+    if read_samples:
+        df_sel_grouped = transform_samples_to_quantile(df_tgw)
+    else:
+        df_sel_grouped = aggregate_quantiles(df_tgw)
+    plot_conf_intvs(
+        df_sel_grouped,
+        plot_col,
+        [idy],
+        "silver",
+        ax,
+        s=75,
+        lw=3,
+        limits=limits,
+    )
+    plot_jagged_scatter(
+        df_tgw,
+        plot_col,
+        [idy],
+        "silver",
+        ax,
+        jitter_amount=0.075,
+        limits=limits,
+    )
+    label_names.append(f"All scenarios ({df_tgw.index.nunique()})")
+    label_idy.append(idy)
+    idy += 1
+
+    ax.axhline(idy - 0.5, color="black")
+    ax.text(
+        0.98,
+        idy - 0.6,
+        "TGW",
+        transform=trans,
+        fontstyle="italic",
+        fontweight="bold",
+        bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.5, "pad": 0.1},
+        verticalalignment="top",
+        horizontalalignment="right",
+        zorder=10,
+    )
+
+    ############################
     # GARD-LENS
+    ############################
     ensemble = "GARD-LENS"
     for gcm in gard_gcms:
         df_sel = df.loc[ensemble, gcm, :, :]
@@ -624,7 +692,7 @@ def plot_city_results(
 
     ax.axhline(idy - 0.5, color="black")
     ax.text(
-        0.99,
+        0.98,
         idy - 0.6,
         "GARD-LENS",
         transform=trans,
@@ -636,7 +704,9 @@ def plot_city_results(
         zorder=10,
     )
 
+    ############################
     # STAR-ESDM
+    ############################
     ensemble = "STAR-ESDM"
     for ssp in df.loc[ensemble].index.unique(level="ssp"):
         df_sel = df.loc[ensemble, :, :, ssp]
@@ -669,7 +739,7 @@ def plot_city_results(
 
     ax.axhline(idy - 0.5, color="black")
     ax.text(
-        0.99,
+        0.98,
         idy - 0.6,
         "STAR-ESDM",
         transform=trans,
@@ -681,15 +751,18 @@ def plot_city_results(
         zorder=10,
     )
 
+    ############################
     # LOCA2
+    ############################
     ensemble = "LOCA2"
-    for gcm in df.loc[ensemble].index.unique(level="gcm"):
-        for ssp in df.loc[ensemble, gcm].index.unique(level="ssp"):
+    for gcm in df_index.loc[ensemble].index.unique(level="gcm"):
+        for ssp in df_index.loc[ensemble, gcm].index.unique(level="ssp"):
             if (
-                len(df.loc[ensemble, gcm, :, ssp].index.unique(level="member"))
+                len(df_index.loc[ensemble, gcm, :, ssp].index.unique(level="member"))
                 >= n_min_members
             ):
                 df_sel = df.loc[ensemble, gcm, :, ssp]
+                df_sel_index = df_index.loc[ensemble, gcm, :, ssp]
                 if read_samples:
                     df_sel_grouped = transform_samples_to_quantile(df_sel)
                 else:
@@ -713,12 +786,12 @@ def plot_city_results(
                     jitter_amount=0.05,
                     limits=limits,
                 )
-                label_names.append(f"{gcm} ({df_sel.index.nunique()})")
+                label_names.append(f"{gcm} ({df_sel_index.index.nunique()})")
                 label_idy.append(idy)
                 idy += 0.5
 
     ax.text(
-        0.99,
+        0.98,
         idy - 0.1,
         "LOCA2",
         transform=trans,
@@ -730,6 +803,7 @@ def plot_city_results(
         zorder=10,
     )
 
+    #### Tidy
     ax.set_ylim([-0.5, idy])
     if yticklabels:
         ax.set_yticks(label_idy, label_names, fontsize=10)

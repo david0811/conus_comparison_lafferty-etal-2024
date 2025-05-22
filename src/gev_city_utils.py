@@ -50,17 +50,17 @@ def fit_gev_city(
     # Read and select data
     df = pd.read_csv(f"{project_data_path}/metrics/cities/{city}_{metric_id}.csv")
 
-    if ensemble == "LOCA2":
-        ssp_sel = "historical"
+    if ensemble in ["LOCA2", "TGW"]:
+        ssp_hist = "historical"
     else:
-        ssp_sel = ssp
+        ssp_hist = ssp
 
     if stationary:
         df_hist = df[
             (df["ensemble"] == ensemble)
             & (df["gcm"] == gcm)
             & (df["member"] == member)
-            & (df["ssp"] == ssp_sel)
+            & (df["ssp"] == ssp_hist)
             & (df["time"] >= hist_slice[0])
             & (df["time"] <= hist_slice[1])
         ]
@@ -78,7 +78,7 @@ def fit_gev_city(
             (df["ensemble"] == ensemble)
             & (df["gcm"] == gcm)
             & (df["member"] == member)
-            & (df["ssp"].isin([ssp_sel, ssp]))
+            & (df["ssp"].isin([ssp_hist, ssp]))
             & (df["time"] >= years[0])
             & (df["time"] <= years[1])
         ]

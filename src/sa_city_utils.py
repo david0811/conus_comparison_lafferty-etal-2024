@@ -5,13 +5,159 @@ import dask
 import numpy as np
 import pandas as pd
 import xarray as xr
+import cartopy.crs as ccrs
 
-from utils import city_list, get_unique_loca_metrics, loca_gard_mapping
+from utils import city_list, get_unique_loca_metrics, loca_gard_mapping, tgw_scenarios
 from utils import roar_data_path as project_data_path
 
 #####################################
 # Calculating city timeseries metrics
 #####################################
+def get_nearest_cells(ds, target_lat, target_lon, ensemble):
+    """
+    Select the central cell and its immediate north, south, east, and west neighbors.
+    Assumes lat/lon are 1D and sorted.
+
+    Parameters:
+    - ds: xarray.Dataset or xarray.DataArray with lat/lon coordinates
+    - target_lat, target_lon: float, target location
+
+    Returns:
+    - xarray.Dataset or DataArray with selected 5 grid cells
+    """
+
+    # Find nearest lat/lon indices
+    if ensemble == "TGW":
+        lat_name = "south_north"
+        lon_name = "west_east"
+        proj_string = "+proj=lcc +lat_0=40.0000076293945 +lon_0=-97 +lat_1=30 +lat_2=45 +x_0=0 +y_0=0 +R=6370000 +units=m +no_defs"
+        ds_crs = ccrs.CRS(proj_string)
+        x, y = ds_crs.transform_point(
+            target_lon, target_lat, src_crs=ccrs.PlateCarree()
+        )
+        lat_idx = np.abs(ds[lat_name] - y).argmin().item()
+        lon_idx = np.abs(ds[lon_name] - x).argmin().item()
+    elif ensemble == "LOCA2":
+        lat_name = "lat"
+        lon_name = "lon"
+        lat_idx = np.abs(ds[lat_name] - target_lat).argmin().item()
+        lon_idx = np.abs(ds[lon_name] - (360. + target_lon)).argmin().item()
+    elif ensemble == "STAR-ESDM":
+        lat_name = "latitude"
+        lon_name = "longitude"
+        lat_idx = np.abs(ds[lat_name] - target_lat).argmin().item()
+        lon_idx = np.abs(ds[lon_name] - (360. + target_lon)).argmin().item()
+    else:
+        lat_name = "lat"
+        lon_name = "lon"
+        lat_idx = np.abs(ds[lat_name] - target_lat).argmin().item()
+        lon_idx = np.abs(ds[lon_name] - target_lon).argmin().item()
+
+    # Neighbor indices (handle boundaries)
+    lat_indices = [lat_idx]
+    if lat_idx > 0:
+        lat_indices.append(lat_idx - 1)  # south
+    if lat_idx < ds.sizes[lat_name] - 1:
+        lat_indices.append(lat_idx + 1)  # north
+
+    lon_indices = [lon_idx]
+    if lon_idx > 0:
+        lon_indices.append(lon_idx - 1)  # west
+    if lon_idx < ds.sizes[lon_name] - 1:
+        lon_indices.append(lon_idx + 1)  # east
+
+    # Create boolean mask to select only center + N/S/E/W
+    selected = ds.isel(
+        {
+            lat_name: xr.DataArray(lat_indices, dims="points"),
+            lon_name: xr.DataArray(lon_indices, dims="points"),
+        }
+    )
+
+    # Now mask to retain only the 5 unique (lat, lon) pairs: center, N/S/E/W
+    # Build (lat, lon) pairs around the center
+    pairs = [
+        (lat_idx, lon_idx, "center"),  # center
+        (lat_idx - 1, lon_idx, "south") if lat_idx > 0 else None,  # south
+        (lat_idx + 1, lon_idx, "north")
+        if lat_idx < ds.sizes[lat_name] - 1
+        else None,  # north
+        (lat_idx, lon_idx - 1, "west") if lon_idx > 0 else None,  # west
+        (lat_idx, lon_idx + 1, "east")
+        if lon_idx < ds.sizes[lon_name] - 1
+        else None,  # east
+    ]
+    pairs = [p for p in pairs if p is not None]
+
+    # Stack to filter
+    selected = ds.isel(
+        {
+            lat_name: xr.DataArray([p[0] for p in pairs], dims="points"),
+            lon_name: xr.DataArray([p[1] for p in pairs], dims="points"),
+        }
+    )
+
+    # Add point type coordinate
+    selected.coords["point"] = xr.DataArray([p[2] for p in pairs], dims="points")
+
+    return (
+        selected.to_dataframe()
+        .dropna()
+        .reset_index()[[
+            "point",
+            "gcm", 
+            "ssp",
+            "member", 
+            "ensemble",
+            "time",
+            list(ds.keys())[0],
+            ]]
+    )
+
+
+def select_point(ds, lat, lon, ensemble, include_neighbors=False):
+    """
+    Select the gridpoint for a given city.
+    """
+    if include_neighbors:
+        df_loc = get_nearest_cells(ds, lat, lon, ensemble)
+    else:
+        if ensemble == "LOCA2":
+            df_loc = (
+                ds.sel(lat=lat, lon=360 + lon, method="nearest")
+                .to_dataframe()
+                .drop(columns=["lat", "lon"])
+                .dropna().reset_index()
+            )
+        elif ensemble == "STAR-ESDM":
+            df_loc = (
+                ds.sel(latitude=lat, longitude=360 + lon, method="nearest")
+                .to_dataframe()
+                .drop(columns=["latitude", "longitude"])
+                .dropna().reset_index()
+            )
+        elif ensemble == "TGW":
+            # Get projection string
+            # https://tgw-data.msdlive.org/
+            proj_string = "+proj=lcc +lat_0=40.0000076293945 +lon_0=-97 +lat_1=30 +lat_2=45 +x_0=0 +y_0=0 +R=6370000 +units=m +no_defs"
+            ds_crs = ccrs.CRS(proj_string)
+
+            # Select location
+            x, y = ds_crs.transform_point(lon, lat, src_crs=ccrs.PlateCarree())
+            ds_sel = ds.sel({"west_east": x, "south_north": y}, method="nearest")
+
+            df_loc = ds_sel.to_dataframe().drop(
+                columns=["lat", "lon", "west_east", "south_north"]
+            )
+        else:
+            df_loc = (
+                ds.sel(lat=lat, lon=lon, method="nearest")
+                .to_dataframe()
+                .drop(columns=["lat", "lon"])
+                .dropna().reset_index()
+            )
+
+    return df_loc
 
 
 def get_city_timeseries(
@@ -21,6 +167,7 @@ def get_city_timeseries(
     member,
     ssp,
     metric_id,
+    include_neighbors=False,
     project_data_path=project_data_path,
 ):
     """
@@ -34,6 +181,12 @@ def get_city_timeseries(
                 f"{project_data_path}/metrics/LOCA2/{metric_id}_{gcm}_{member}_{ssp}_*.nc"
             )
             ds = xr.concat([xr.open_dataset(file) for file in files], dim="time")
+        elif ensemble == "TGW":
+            files = glob(f"{project_data_path}/metrics/TGW/{metric_id}_{ssp}_*.nc")
+            ds = xr.concat(
+                [xr.open_dataset(file).isel(time=slice(None, -1)) for file in files],
+                dim="time",
+            )
         else:
             ds = xr.open_dataset(
                 f"{project_data_path}/metrics/{ensemble}/{metric_id}_{gcm}_{member}_{ssp}.nc"
@@ -69,30 +222,14 @@ def get_city_timeseries(
 
         # Extract city data
         lat, lon = city_list[city]
-        if ensemble == "LOCA2":
-            df_loc = (
-                ds.sel(lat=lat, lon=360 + lon, method="nearest")
-                .to_dataframe()
-                .drop(columns=["lat", "lon"])
-                .dropna()
-            )
-        elif ensemble == "STAR-ESDM":
-            df_loc = (
-                ds.sel(latitude=lat, longitude=360 + lon, method="nearest")
-                .to_dataframe()
-                .drop(columns=["latitude", "longitude"])
-                .dropna()
-            )
-        else:
-            df_loc = (
-                ds.sel(lat=lat, lon=lon, method="nearest")
-                .to_dataframe()
-                .dropna()
-                .drop(columns=["lat", "lon"])
-            )
+        
+        df_loc = select_point(
+            ds, lat, lon, ensemble, include_neighbors=include_neighbors
+        )
 
         # Return
-        return df_loc.reset_index()
+        return df_loc
+
     except Exception as e:
         print(f"Error reading {city} {metric_id} {ensemble} {gcm} {member} {ssp}: {e}")
         return None
@@ -101,21 +238,28 @@ def get_city_timeseries(
 def get_city_timeseries_all(
     city,
     metric_id,
+    include_neighbors=False,
     project_data_path=project_data_path,
 ):
     """
     Loop through all meta-ensemble members and calculate the city timeseries.
     """
     # Check if done
-    if os.path.exists(f"{project_data_path}/metrics/cities/{city}_{metric_id}.csv"):
+    if include_neighbors:
+        store_path = f"{project_data_path}/metrics/cities/{city}_{metric_id}_neighbors.csv"
+    else:
+        store_path = f"{project_data_path}/metrics/cities/{city}_{metric_id}_neighbors.csv"
+    
+    if os.path.exists(store_path):
         return None
 
+    delayed = []
+    
     #### LOCA2
     ensemble = "LOCA2"
     df_loca = get_unique_loca_metrics(metric_id)
 
     # Loop through
-    delayed = []
     for index, row in df_loca.iterrows():
         # Get info
         gcm, member, ssp = row["gcm"], row["member"], row["ssp"]
@@ -127,6 +271,7 @@ def get_city_timeseries_all(
             member=member,
             ssp=ssp,
             metric_id=metric_id,
+            include_neighbors=include_neighbors
         )
         delayed.append(out)
 
@@ -147,6 +292,7 @@ def get_city_timeseries_all(
             member=member,
             ssp=ssp,
             metric_id=metric_id,
+            include_neighbors=include_neighbors
         )
         delayed.append(out)
 
@@ -170,16 +316,34 @@ def get_city_timeseries_all(
             member=member,
             ssp=ssp,
             metric_id=metric_id,
+            include_neighbors=include_neighbors
+        )
+        delayed.append(out)
+
+    #### TGW
+    ensemble = "TGW"
+    gcm = "none"
+    member = "none"
+
+    # Loop through scenarios
+    for ssp in tgw_scenarios:
+        # Calculate
+        out = dask.delayed(get_city_timeseries)(
+            city=city,
+            ensemble=ensemble,
+            gcm=gcm,
+            member=member,
+            ssp=ssp,
+            metric_id=metric_id,
+            include_neighbors=include_neighbors
         )
         delayed.append(out)
 
     # Compute all
-    df = pd.concat(dask.compute(*delayed))
+    df = pd.concat(dask.compute(*delayed), ignore_index=True)
 
     # Store
-    df.to_csv(
-        f"{project_data_path}/metrics/cities/{city}_{metric_id}.csv",
-        index=False,
+    df.to_csv(store_path, index=False,
     )
 
 

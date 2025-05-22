@@ -21,6 +21,13 @@ trend_metric_ids = [
 gard_gcms = ["CanESM5", "CESM2-LENS", "EC-Earth3"]
 ensembles = ["LOCA2", "GARD-LENS", "STAR-ESDM"]
 ssps = ["ssp245", "ssp370", "ssp585"]
+tgw_scenarios = [
+    "historical",
+    "rcp45cooler",
+    "rcp85cooler",
+    "rcp45hotter",
+    "rcp85hotter",
+]
 
 ################
 # Paths
