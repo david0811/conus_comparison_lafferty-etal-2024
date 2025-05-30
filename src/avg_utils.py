@@ -29,11 +29,13 @@ def avg_calc_single(
     """
     try:
         # Check if done
-        proj_name = f"{proj_years[0]}-{proj_years[1]}"
+        proj_name = (
+            f"_{proj_years[0]}-{proj_years[1]}" if proj_years is not None else ""
+        )
         hist_name = (
             f"_{hist_years[0]}-{hist_years[1]}" if hist_years is not None else ""
         )
-        store_name = f"{ensemble}_{gcm}_{member}_{ssp}_{proj_name}{hist_name}.nc"
+        store_name = f"{ensemble}_{gcm}_{member}_{ssp}{proj_name}{hist_name}.nc"
 
         if os.path.exists(f"{store_path}/{store_name}"):
             return None
@@ -67,20 +69,34 @@ def avg_calc_single(
         # Apply time slices
         ds["time"] = ds["time"].dt.year
 
-        ds_proj = ds.sel(time=slice(proj_years[0], proj_years[1]))
+        if proj_years is not None:
+            ds_proj = ds.sel(time=slice(proj_years[0], proj_years[1]))
         if hist_years is not None:
             ds_hist = ds.sel(time=slice(hist_years[0], hist_years[1]))
+        else:
+            raise ValueError("Years are required")
 
         # Check length is as expected
-        expected_length = check_data_length(
-            ds_proj["time"], ensemble, gcm, ssp, proj_years
-        )
+        if proj_years is not None:
+            expected_length = check_data_length(
+                ds_proj["time"], ensemble, gcm, ssp, proj_years
+            )
+        if hist_years is not None:
+            expected_length = check_data_length(
+                ds_hist["time"], ensemble, gcm, ssp, hist_years
+            )
 
         # Calculate mean
-        ds_proj_out = ds_proj.mean(dim="time")
+        if proj_years is not None:
+            ds_proj_out = ds_proj.mean(dim="time")
         if hist_years is not None:
             ds_hist_out = ds_hist.mean(dim="time")
-            ds_out = ds_proj_out - ds_hist_out
+
+        if hist_years is not None:
+            if proj_years is not None:
+                ds_out = ds_proj_out - ds_hist_out
+            else:
+                ds_out = ds_hist_out
         else:
             ds_out = ds_proj_out
 

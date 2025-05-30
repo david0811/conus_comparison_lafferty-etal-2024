@@ -28,7 +28,8 @@ def xr_estimate_return_level(
     return_period,
     ds,
     scalar,
-    stationary=True,
+    loc_stationary=True,
+    scale_stationary=True,
     return_period_year=None,
     starting_year=None,
     return_params=False,
@@ -37,10 +38,18 @@ def xr_estimate_return_level(
     Calculate the return level given GEV parameters.
     """
     # Get location parameters
-    if not stationary:
+    if not loc_stationary:
         locs = ds["loc_intcp"] + ds["loc_trend"] * (return_period_year - starting_year)
     else:
         locs = ds["loc"]
+
+    if not scale_stationary:
+        scales = np.exp(
+            ds["log_scale_intcp"]
+            + ds["log_scale_trend"] * (return_period_year - starting_year)
+        )
+    else:
+        scales = ds["scale"]
 
     # Calculate return level
     dims = ds["shape"].dims
@@ -48,7 +57,7 @@ def xr_estimate_return_level(
         estimate_return_level,
         return_period,
         locs,
-        ds["scale"],
+        scales,
         ds["shape"],
         input_core_dims=[[], dims, dims, dims],
         output_core_dims=[dims],

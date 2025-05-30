@@ -94,24 +94,30 @@ def map_store_names(ensemble, gcm, member):
     return gcm_name, member_name
 
 
-def check_data_length(data, ensemble, gcm, ssp, years):
+def check_data_length(data, ensemble, gcm, ssp, years, include_neighbors=False):
     """
     Check length function.
     If data is None, just return the expected length.
     """
+    # If including neighbors, add 4 extra years
+    if include_neighbors:
+        multiplier = 5
+    else:
+        multiplier = 1
+
     # Check length is as expected
     if (
         ensemble == "GARD-LENS"
         and gcm in ["ecearth3", "EC-Earth3"]
         and years[0] == 1950
     ):
-        expected_length = years[1] - 1970 + 1  # GARD-LENS EC-Earth3
+        expected_length = (years[1] - 1970 + 1) * multiplier  # GARD-LENS EC-Earth3
         if data is not None:
             assert len(data) == expected_length, (
                 f"ds length is {len(data)}, expected {expected_length}"
             )
     else:
-        expected_length = years[1] - years[0] + 1
+        expected_length = (years[1] - years[0] + 1) * multiplier
         if data is not None:
             assert len(data) == expected_length, (
                 f"ds length is {len(data)}, expected {expected_length}"

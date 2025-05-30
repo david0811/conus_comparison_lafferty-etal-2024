@@ -127,7 +127,10 @@ def plot_uc_map(
 ):
     # Read
     if analysis_type == "trends":
-        file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{plot_col}_{grid}grid_{regrid_method}.nc"
+        if metric_id == "sum_pr":
+            file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{plot_col}_{grid}grid_{regrid_method}_norm.nc"
+        else:
+            file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{plot_col}_{grid}grid_{regrid_method}.nc"
     elif analysis_type == "extreme_value":
         if stationary:
             stat_str = "stat"

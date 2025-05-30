@@ -17,6 +17,7 @@ def read_loca(
     bootstrap,
     cols_to_keep,
     analysis_type,
+    norm=False,
     n_boot_proj=100,
     n_boot_hist=1,
     _preprocess_func=lambda x: x,
@@ -91,6 +92,7 @@ def read_loca(
         dim="ssp",
     )
 
+    # Historical for EVA
     if analysis_type == "extreme_value":
         if hist_slice is not None:
             if not bootstrap:
@@ -105,6 +107,46 @@ def read_loca(
                     ]
                 )
                 ds_loca = xr.concat([ds_loca, ds_loca_hist], dim="ssp")
+    else:
+        # Normalize if desired, using historical average
+        if norm:
+            file_info = f"1950-2014{loca_regrid_str}"
+            # Read all
+            loca_ssp245_files = glob(
+                f"{project_data_path}/averages/{loca_grid_str}/{metric_id}/LOCA2_*_ssp245_{file_info}.nc"
+            )
+            loca_ssp370_files = glob(
+                f"{project_data_path}/averages/{loca_grid_str}/{metric_id}/LOCA2_*_ssp370_{file_info}.nc"
+            )
+            loca_ssp585_files = glob(
+                f"{project_data_path}/averages/{loca_grid_str}/{metric_id}/LOCA2_*_ssp585_{file_info}.nc"
+            )
+
+            var_id = metric_id.split("_")[1]
+            ds_loca_hist = xr.concat(
+                [
+                    xr.combine_by_coords(
+                        [
+                            _preprocess_func(xr.open_dataset(file)[var_id])
+                            for file in loca_ssp245_files
+                        ]
+                    ),
+                    xr.combine_by_coords(
+                        [
+                            _preprocess_func(xr.open_dataset(file)[var_id])
+                            for file in loca_ssp370_files
+                        ]
+                    ),
+                    xr.combine_by_coords(
+                        [
+                            _preprocess_func(xr.open_dataset(file)[var_id])
+                            for file in loca_ssp585_files
+                        ]
+                    ),
+                ],
+                dim="ssp",
+            )
+            ds_loca = ds_loca / ds_loca_hist[var_id]
 
     return ds_loca
 
@@ -120,6 +162,7 @@ def read_star(
     bootstrap,
     cols_to_keep,
     analysis_type,
+    norm=False,
     n_boot_proj=100,
     n_boot_hist=1,
     _preprocess_func=lambda x: x,
@@ -186,6 +229,25 @@ def read_star(
                     ]
                 )
                 ds_star = xr.concat([ds_star, ds_star_hist], dim="ssp")
+    else:
+        # Normalize if desired, using historical average
+        if norm:
+            file_info = f"1950-2014{star_regrid_str}"
+            star_hist_files = glob(
+                f"{project_data_path}/averages/{star_grid_str}/{metric_id}/STAR-ESDM_*_ssp245_{file_info}.nc"
+            ) + glob(
+                f"{project_data_path}/averages/{star_grid_str}/{metric_id}/STAR-ESDM_*_ssp585_{file_info}.nc"
+            )
+
+            # Read all historical
+            var_id = metric_id.split("_")[1]
+            ds_star_hist = xr.combine_by_coords(
+                [
+                    _preprocess_func(xr.open_dataset(file)[var_id])
+                    for file in star_hist_files
+                ]
+            )
+            ds_star = ds_star / ds_star_hist[var_id]
 
     # Drop TaiESM1 -- too hot! (outputs were recalled)
     ds_star = ds_star.drop_sel(gcm="TaiESM1")
@@ -204,6 +266,7 @@ def read_gard(
     bootstrap,
     cols_to_keep,
     analysis_type,
+    norm=False,
     n_boot_proj=100,
     n_boot_hist=1,
     _preprocess_func=lambda x: x,
@@ -269,6 +332,21 @@ def read_gard(
                     ]
                 )
                 ds_gard = xr.concat([ds_gard, ds_gard_hist], dim="ssp")
+    else:
+        # Normalize if desired, using historical average
+        if norm:
+            file_info = f"1950-2014{gard_regrid_str}"
+            gard_hist_files = glob(
+                f"{project_data_path}/averages/{gard_grid_str}/{metric_id}/GARD-LENS_*_ssp370_{file_info}.nc"
+            )
+            var_id = metric_id.split("_")[1]
+            ds_gard_hist = xr.combine_by_coords(
+                [
+                    _preprocess_func(xr.open_dataset(file)[var_id])
+                    for file in gard_hist_files
+                ]
+            )
+            ds_gard = ds_gard / ds_gard_hist[var_id]
 
     return ds_gard
 
@@ -284,6 +362,7 @@ def read_all(
     bootstrap,
     cols_to_keep,
     analysis_type,
+    norm=False,
     n_boot_proj=100,
     n_boot_hist=1,
     _preprocess_func=lambda x: x,
@@ -302,6 +381,7 @@ def read_all(
         bootstrap=bootstrap,
         cols_to_keep=cols_to_keep,
         analysis_type=analysis_type,
+        norm=norm,
         n_boot_proj=n_boot_proj,
         n_boot_hist=n_boot_hist,
         _preprocess_func=_preprocess_func,
@@ -317,6 +397,7 @@ def read_all(
         bootstrap=bootstrap,
         cols_to_keep=cols_to_keep,
         analysis_type=analysis_type,
+        norm=norm,
         n_boot_proj=n_boot_proj,
         n_boot_hist=n_boot_hist,
         _preprocess_func=_preprocess_func,
@@ -332,6 +413,7 @@ def read_all(
         bootstrap=bootstrap,
         cols_to_keep=cols_to_keep,
         analysis_type=analysis_type,
+        norm=norm,
         n_boot_proj=n_boot_proj,
         n_boot_hist=n_boot_hist,
         _preprocess_func=_preprocess_func,
@@ -640,6 +722,7 @@ def uc_all(
     hist_slice,
     return_metric=False,
     analysis_type="extreme_value",
+    norm=False,
     n_boot_proj=100,
     n_boot_hist=1,
     include_fit_uc=True,
@@ -662,6 +745,7 @@ def uc_all(
         bootstrap=False,
         cols_to_keep=[col_name_main],
         analysis_type=analysis_type,
+        norm=norm,
         n_boot_proj=n_boot_proj,
         n_boot_hist=n_boot_hist,
         _preprocess_func=_preprocess_func_main,
@@ -682,7 +766,7 @@ def uc_all(
         ds_star = ds_star.where(ds_star[col_name_main] >= filter_vals[0])
         ds_star = ds_star.where(ds_star[col_name_main] <= filter_vals[1])
 
-    # For the best fir results, future and hisorical are stored separately
+    # For the best fit results, future and historical are stored separately
     # so we need to subtract if change is desired (indicated by hist_slice is not None)
     if analysis_type == "extreme_value":
         if hist_slice is not None:
@@ -733,6 +817,7 @@ def uc_all(
             bootstrap=True,
             cols_to_keep=[col_name_boot],
             analysis_type=analysis_type,
+            norm=norm,
             n_boot_proj=n_boot_proj,
             n_boot_hist=n_boot_hist,
             _preprocess_func=_preprocess_func_boot,

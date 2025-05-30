@@ -10,6 +10,7 @@ import cartopy.crs as ccrs
 from utils import city_list, get_unique_loca_metrics, loca_gard_mapping, tgw_scenarios
 from utils import roar_data_path as project_data_path
 
+
 #####################################
 # Calculating city timeseries metrics
 #####################################
@@ -41,12 +42,12 @@ def get_nearest_cells(ds, target_lat, target_lon, ensemble):
         lat_name = "lat"
         lon_name = "lon"
         lat_idx = np.abs(ds[lat_name] - target_lat).argmin().item()
-        lon_idx = np.abs(ds[lon_name] - (360. + target_lon)).argmin().item()
+        lon_idx = np.abs(ds[lon_name] - (360.0 + target_lon)).argmin().item()
     elif ensemble == "STAR-ESDM":
         lat_name = "latitude"
         lon_name = "longitude"
         lat_idx = np.abs(ds[lat_name] - target_lat).argmin().item()
-        lon_idx = np.abs(ds[lon_name] - (360. + target_lon)).argmin().item()
+        lon_idx = np.abs(ds[lon_name] - (360.0 + target_lon)).argmin().item()
     else:
         lat_name = "lat"
         lon_name = "lon"
@@ -103,15 +104,17 @@ def get_nearest_cells(ds, target_lat, target_lon, ensemble):
     return (
         selected.to_dataframe()
         .dropna()
-        .reset_index()[[
-            "point",
-            "gcm", 
-            "ssp",
-            "member", 
-            "ensemble",
-            "time",
-            list(ds.keys())[0],
-            ]]
+        .reset_index()[
+            [
+                "point",
+                "gcm",
+                "ssp",
+                "member",
+                "ensemble",
+                "time",
+                list(ds.keys())[0],
+            ]
+        ]
     )
 
 
@@ -127,14 +130,16 @@ def select_point(ds, lat, lon, ensemble, include_neighbors=False):
                 ds.sel(lat=lat, lon=360 + lon, method="nearest")
                 .to_dataframe()
                 .drop(columns=["lat", "lon"])
-                .dropna().reset_index()
+                .dropna()
+                .reset_index()
             )
         elif ensemble == "STAR-ESDM":
             df_loc = (
                 ds.sel(latitude=lat, longitude=360 + lon, method="nearest")
                 .to_dataframe()
                 .drop(columns=["latitude", "longitude"])
-                .dropna().reset_index()
+                .dropna()
+                .reset_index()
             )
         elif ensemble == "TGW":
             # Get projection string
@@ -154,7 +159,8 @@ def select_point(ds, lat, lon, ensemble, include_neighbors=False):
                 ds.sel(lat=lat, lon=lon, method="nearest")
                 .to_dataframe()
                 .drop(columns=["lat", "lon"])
-                .dropna().reset_index()
+                .dropna()
+                .reset_index()
             )
 
     return df_loc
@@ -222,7 +228,7 @@ def get_city_timeseries(
 
         # Extract city data
         lat, lon = city_list[city]
-        
+
         df_loc = select_point(
             ds, lat, lon, ensemble, include_neighbors=include_neighbors
         )
@@ -246,15 +252,19 @@ def get_city_timeseries_all(
     """
     # Check if done
     if include_neighbors:
-        store_path = f"{project_data_path}/metrics/cities/{city}_{metric_id}_neighbors.csv"
+        store_path = (
+            f"{project_data_path}/metrics/cities/{city}_{metric_id}_neighbors.csv"
+        )
     else:
-        store_path = f"{project_data_path}/metrics/cities/{city}_{metric_id}_neighbors.csv"
-    
+        store_path = (
+            f"{project_data_path}/metrics/cities/{city}_{metric_id}_neighbors.csv"
+        )
+
     if os.path.exists(store_path):
         return None
 
     delayed = []
-    
+
     #### LOCA2
     ensemble = "LOCA2"
     df_loca = get_unique_loca_metrics(metric_id)
@@ -271,7 +281,7 @@ def get_city_timeseries_all(
             member=member,
             ssp=ssp,
             metric_id=metric_id,
-            include_neighbors=include_neighbors
+            include_neighbors=include_neighbors,
         )
         delayed.append(out)
 
@@ -292,7 +302,7 @@ def get_city_timeseries_all(
             member=member,
             ssp=ssp,
             metric_id=metric_id,
-            include_neighbors=include_neighbors
+            include_neighbors=include_neighbors,
         )
         delayed.append(out)
 
@@ -316,7 +326,7 @@ def get_city_timeseries_all(
             member=member,
             ssp=ssp,
             metric_id=metric_id,
-            include_neighbors=include_neighbors
+            include_neighbors=include_neighbors,
         )
         delayed.append(out)
 
@@ -335,7 +345,7 @@ def get_city_timeseries_all(
             member=member,
             ssp=ssp,
             metric_id=metric_id,
-            include_neighbors=include_neighbors
+            include_neighbors=include_neighbors,
         )
         delayed.append(out)
 
@@ -343,7 +353,9 @@ def get_city_timeseries_all(
     df = pd.concat(dask.compute(*delayed), ignore_index=True)
 
     # Store
-    df.to_csv(store_path, index=False,
+    df.to_csv(
+        store_path,
+        index=False,
     )
 
 

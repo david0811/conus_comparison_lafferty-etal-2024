@@ -1,6 +1,6 @@
 #!/bin/bash
-#SBATCH --output=./logs/jobs/eva_nonstat-boot-dd-%a.log
-#SBATCH --error=./logs/jobs/eva_nonstat-boot-dd-%a.err
+#SBATCH --output=./logs/jobs/eva_nonstat-scale-%a.log
+#SBATCH --error=./logs/jobs/eva_nonstat-scale-%a.err
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=3GB
@@ -16,16 +16,20 @@ echo "Job started on $(hostname) at $(date)"
 #######################################################################
 # Set the metric IDs to search
 # METRIC_IDS=("max_pr" "max_tasmax" "min_tasmin" "max_cdd" "max_hdd")
-# METRIC_IDS=("max_pr" "max_tasmax" "min_tasmin")
-METRIC_IDS=("min_tasmin" "max_cdd" "max_hdd")
+METRIC_IDS=("max_pr" "max_tasmax" "min_tasmin")
+# METRIC_IDS=("min_tasmin" "max_cdd" "max_hdd")
 
 
 # Define allowed ensembles
 ALLOWED_ENSEMBLES=("STAR-ESDM" "LOCA2" "GARD-LENS")
+# ALLOWED_ENSEMBLES=("LOCA2" "GARD-LENS")
 # ALLOWED_ENSEMBLES=("STAR-ESDM")
 
 # Set bootstrap or not
 BOOTSTRAP=1
+
+# Set non-stationary scale or not
+SCALE=1
 #######################################################################
 
 # Get climate info for all
@@ -59,7 +63,8 @@ do
         for metric_id in "${METRIC_IDS[@]}"; do
             # Check if done
             SUFFIX=$([ "$BOOTSTRAP" -eq 1 ] && echo "nboot100" || echo "main")
-            if [ -f "${PROJECT_DATA_DIR}/extreme_value/original_grid/${metric_id}/${ensemble}_${gcm}_${member}_${ssp}_1950-2100_nonstat_mle_${SUFFIX}.nc" ]; then
+            SCALE_SUFFIX=$([ "$SCALE" -eq 1 ] && echo "_scale" || echo "")
+            if [ -f "${PROJECT_DATA_DIR}/extreme_value/original_grid/${metric_id}/${ensemble}_${gcm}_${member}_${ssp}_1950-2100_nonstat${SCALE_SUFFIX}_mle_${SUFFIX}.nc" ]; then
                 echo "  Skipping: $metric_id, $ensemble, $gcm, $member, $ssp (already done)"
                 continue
             fi
@@ -72,13 +77,13 @@ done
 
 # Count the number of jobs
 TOTAL_JOBS=$(wc -l < $PARAM_FILE)
-MAX_QUEUED=10  # Set to just below your submission limit
+MAX_QUEUED=20  # Set to just below your submission limit
 SLEEP_TIME=3600  # 1 hour between checks
 
 for ((i=1; i<=$TOTAL_JOBS; i++)); do
     # Check current queue count
     while true; do
-        QUEUE_COUNT=$(squeue -u $USER -p open | wc -l)
+        QUEUE_COUNT=$(squeue -u $USER -p basic | wc -l)
         QUEUE_COUNT=$((QUEUE_COUNT - 1))  # Subtract header line
         
         if [ $QUEUE_COUNT -lt $MAX_QUEUED ]; then
@@ -95,7 +100,7 @@ for ((i=1; i<=$TOTAL_JOBS; i++)); do
     JOB_NAME="${METRIC_ID}_${ENSEMBLE}_${GCM}_${MEMBER}_${SSP}"
     
     echo "$(date): Submitting job $i/$TOTAL_JOBS: $JOB_NAME"
-    sbatch -J $JOB_NAME ../src/submit_gev_nonstat.sh $ENSEMBLE $GCM $MEMBER $SSP $METRIC_ID $BOOTSTRAP
+    sbatch -J $JOB_NAME ../src/submit_gev_nonstat.sh $ENSEMBLE $GCM $MEMBER $SSP $METRIC_ID $BOOTSTRAP $SCALE
     
     # Small delay between submissions to not overwhelm scheduler
     sleep 5
