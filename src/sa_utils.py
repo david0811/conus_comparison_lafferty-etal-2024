@@ -17,7 +17,7 @@ def read_loca(
     bootstrap,
     cols_to_keep,
     analysis_type,
-    norm=False,
+    rel=False,
     n_boot_proj=100,
     n_boot_hist=1,
     _preprocess_func=lambda x: x,
@@ -108,8 +108,8 @@ def read_loca(
                 )
                 ds_loca = xr.concat([ds_loca, ds_loca_hist], dim="ssp")
     else:
-        # Normalize if desired, using historical average
-        if norm:
+        # Normalize to relative change if desired, using historical average
+        if rel:
             file_info = f"1950-2014{loca_regrid_str}"
             # Read all
             loca_ssp245_files = glob(
@@ -146,6 +146,11 @@ def read_loca(
                 ],
                 dim="ssp",
             )
+            # Convert temperature to K if needed
+            if var_id in ["tas", "tasmax", "tasmin"]:
+                ds_loca = ds_loca + 273.15
+                ds_loca_hist[var_id] = ds_loca_hist[var_id] + 273.15
+            # Normalize by historical average
             ds_loca = ds_loca / ds_loca_hist[var_id]
 
     return ds_loca
@@ -162,7 +167,7 @@ def read_star(
     bootstrap,
     cols_to_keep,
     analysis_type,
-    norm=False,
+    rel=False,
     n_boot_proj=100,
     n_boot_hist=1,
     _preprocess_func=lambda x: x,
@@ -231,7 +236,7 @@ def read_star(
                 ds_star = xr.concat([ds_star, ds_star_hist], dim="ssp")
     else:
         # Normalize if desired, using historical average
-        if norm:
+        if rel:
             file_info = f"1950-2014{star_regrid_str}"
             star_hist_files = glob(
                 f"{project_data_path}/averages/{star_grid_str}/{metric_id}/STAR-ESDM_*_ssp245_{file_info}.nc"
@@ -247,6 +252,11 @@ def read_star(
                     for file in star_hist_files
                 ]
             )
+            # Convert temperature to K if needed
+            if var_id in ["tas", "tasmax", "tasmin"]:
+                ds_star = ds_star + 273.15
+                ds_star_hist[var_id] = ds_star_hist[var_id] + 273.15
+            # Normalize by historical average
             ds_star = ds_star / ds_star_hist[var_id]
 
     # Drop TaiESM1 -- too hot! (outputs were recalled)
@@ -266,7 +276,7 @@ def read_gard(
     bootstrap,
     cols_to_keep,
     analysis_type,
-    norm=False,
+    rel=False,
     n_boot_proj=100,
     n_boot_hist=1,
     _preprocess_func=lambda x: x,
@@ -334,7 +344,7 @@ def read_gard(
                 ds_gard = xr.concat([ds_gard, ds_gard_hist], dim="ssp")
     else:
         # Normalize if desired, using historical average
-        if norm:
+        if rel:
             file_info = f"1950-2014{gard_regrid_str}"
             gard_hist_files = glob(
                 f"{project_data_path}/averages/{gard_grid_str}/{metric_id}/GARD-LENS_*_ssp370_{file_info}.nc"
@@ -346,6 +356,11 @@ def read_gard(
                     for file in gard_hist_files
                 ]
             )
+            # Convert temperature to K if needed
+            if var_id in ["tas", "tasmax", "tasmin"]:
+                ds_gard = ds_gard + 273.15
+                ds_gard_hist[var_id] = ds_gard_hist[var_id] + 273.15
+            # Normalize by historical average
             ds_gard = ds_gard / ds_gard_hist[var_id]
 
     return ds_gard
@@ -362,7 +377,7 @@ def read_all(
     bootstrap,
     cols_to_keep,
     analysis_type,
-    norm=False,
+    rel=False,
     n_boot_proj=100,
     n_boot_hist=1,
     _preprocess_func=lambda x: x,
@@ -381,7 +396,7 @@ def read_all(
         bootstrap=bootstrap,
         cols_to_keep=cols_to_keep,
         analysis_type=analysis_type,
-        norm=norm,
+        rel=rel,
         n_boot_proj=n_boot_proj,
         n_boot_hist=n_boot_hist,
         _preprocess_func=_preprocess_func,
@@ -397,7 +412,7 @@ def read_all(
         bootstrap=bootstrap,
         cols_to_keep=cols_to_keep,
         analysis_type=analysis_type,
-        norm=norm,
+        rel=rel,
         n_boot_proj=n_boot_proj,
         n_boot_hist=n_boot_hist,
         _preprocess_func=_preprocess_func,
@@ -413,7 +428,7 @@ def read_all(
         bootstrap=bootstrap,
         cols_to_keep=cols_to_keep,
         analysis_type=analysis_type,
-        norm=norm,
+        rel=rel,
         n_boot_proj=n_boot_proj,
         n_boot_hist=n_boot_hist,
         _preprocess_func=_preprocess_func,
@@ -722,7 +737,7 @@ def uc_all(
     hist_slice,
     return_metric=False,
     analysis_type="extreme_value",
-    norm=False,
+    rel=False,
     n_boot_proj=100,
     n_boot_hist=1,
     include_fit_uc=True,
@@ -745,7 +760,7 @@ def uc_all(
         bootstrap=False,
         cols_to_keep=[col_name_main],
         analysis_type=analysis_type,
-        norm=norm,
+        rel=rel,
         n_boot_proj=n_boot_proj,
         n_boot_hist=n_boot_hist,
         _preprocess_func=_preprocess_func_main,
@@ -817,7 +832,7 @@ def uc_all(
             bootstrap=True,
             cols_to_keep=[col_name_boot],
             analysis_type=analysis_type,
-            norm=norm,
+            rel=rel,
             n_boot_proj=n_boot_proj,
             n_boot_hist=n_boot_hist,
             _preprocess_func=_preprocess_func_boot,

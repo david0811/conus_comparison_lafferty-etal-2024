@@ -7,7 +7,7 @@
 #SBATCH --mem=80GB
 #SBATCH --time=12:00:00
 #SBATCH --partition=basic
-#SBATCH --account=pches_cr_default
+########## SBATCH --account=pches_cr_default
 
 # Code directory
 CODE_DIR="/storage/home/dcl5300/work/current_projects/conus_comparison_lafferty-etal-2024"

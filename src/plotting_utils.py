@@ -31,13 +31,34 @@ gev_labels = {
     "max_pr": "[mm]",
     "min_tasmin": "[C]",
 }
-trend_labels = {
+rel_labels = {
+    "avg_tas": "[%]",
+    "avg_tasmin": "[%]",
+    "avg_tasmax": "[%]",
+    "sum_pr": "[%]",
+    "sum_cdd": "[%]",
+    "sum_hdd": "[%]",
+    "max_tasmax": "[%]",
+    "max_cdd": "[%]",
+    "max_hdd": "[%]",
+    "max_pr": "[%]",
+    "min_tasmin": "[%]",
+}
+trend_labels_abs = {
     "avg_tas": "\n[C/decade]",
     "avg_tasmin": "\n[C/decade]",
     "avg_tasmax": "\n[C/decade]",
     "sum_pr": "\n[mm/decade]",
     "sum_cdd": "\n[degree days/decade]",
     "sum_hdd": "\n[degree days/decade]",
+}
+trend_labels_rel = {
+    "avg_tas": "\n[%/decade]",
+    "avg_tasmin": "\n[%/decade]",
+    "avg_tasmax": "\n[%/decade]",
+    "sum_pr": "\n[%/decade]",
+    "sum_cdd": "\n[%/decade]",
+    "sum_hdd": "\n[%/decade]",
 }
 avg_labels = {
     "avg_tas": "[C]",
@@ -47,7 +68,6 @@ avg_labels = {
     "sum_cdd": "[degree days]",
     "sum_hdd": "[degree days]",
 }
-
 title_labels = {
     "max_tasmax": "Annual maximum temperature",
     "max_cdd": "Annual maximum 1-day CDD",
@@ -61,7 +81,6 @@ title_labels = {
     "sum_cdd": "Annual total cooling degree days",
     "sum_hdd": "Annual total heating degree days",
 }
-
 city_names = {
     "chicago": "Chicago",
     "seattle": "Seattle",
@@ -72,7 +91,6 @@ city_names = {
     "boston": "Boston",
     "nashville": "Nashville",
 }
-
 uc_labels = {
     "ssp_uc": "Scenario uncertainty",
     "gcm_uc": "Response uncertainty",
@@ -80,7 +98,6 @@ uc_labels = {
     "dsc_uc": "Downscaling uncertainty",
     "fit_uc": "Fit uncertainty",
 }
-
 uc_colors = {
     "ssp_uc": "#0077BB",
     "gcm_uc": "#33BBEE",
@@ -88,7 +105,6 @@ uc_colors = {
     "dsc_uc": "#EE3377",
     "fit_uc": "#CC3311",
 }
-
 uc_markers = {
     "ssp_uc": "v",
     "gcm_uc": "^",
@@ -119,18 +135,143 @@ def plot_uc_map(
     fig=None,
     axs=None,
     norm="uc_99w_main",
+    total_uc_col="uc_99w_main",
+    rel_metric_ids=[],
     cbar=False,
     vmax_uc=40,
     title="",
     y_title=0.98,
     filter_str="",
 ):
+    """
+    Plot uncertainty component maps for climate metrics across CONUS.
+
+    This function creates a multi-panel map visualization showing total uncertainty
+    and individual uncertainty components (scenario, response, internal variability,
+    downscaling, and fit uncertainty) for climate metrics. The maps are displayed
+    on a Lambert Conformal projection covering the continental United States.
+
+    Parameters
+    ----------
+    metric_id : str
+        Climate metric identifier (e.g., 'max_tasmax', 'sum_pr', 'avg_tas').
+        Must be one of the supported metrics in the title_labels dictionary.
+
+    proj_slice : str
+        Projection time period (e.g., '2050-2100').
+
+    hist_slice : str
+        Historical time period (e.g., '1950-2014').
+
+    plot_col : str
+        Column name for plotting (typically SSP scenario like 'ssp245').
+
+    return_period : int
+        Return period in years for extreme value analysis (e.g., 100).
+        Only used when analysis_type is 'extreme_value'.
+
+    grid : str
+        Grid resolution identifier (e.g., '0.25').
+
+    fit_method : str
+        Fitting method used for extreme value analysis (e.g., 'mle').
+        Only used when analysis_type is 'extreme_value'.
+
+    stationary : bool
+        Whether the analysis is stationary (True) or non-stationary (False).
+        Only used when analysis_type is 'extreme_value'.
+
+    time_str : str or None
+        Time string for non-stationary analysis (e.g., '2050-2100').
+        Only used when analysis_type is 'extreme_value'.
+
+    analysis_type : str
+        Type of analysis: 'trends', 'extreme_value', or 'averages'.
+        Determines file path construction and plotting behavior.
+
+    plot_fit_uc : bool, default=False
+        Whether to include fit uncertainty in the plot.
+
+    regrid_method : str, default="nearest"
+        Regridding method used for data processing.
+
+    fig : matplotlib.figure.Figure, optional
+        Existing figure to plot on. If None, creates a new figure.
+
+    axs : array-like of matplotlib.axes.Axes, optional
+        Existing axes to plot on. If None, creates new axes.
+
+    norm : str or None, default="uc_99w_main"
+        Normalization method for uncertainty components:
+        - None: No normalization
+        - "relative": Normalize by total uncertainty
+        - "uc_99w_main": Normalize by 99% uncertainty range
+        - Other column names: Normalize by specified column
+
+    total_uc_col : str, default="uc_99w_main"
+        Column name for total uncertainty display.
+
+    rel_metric_ids : list of str, optional
+        List of metric IDs that should be treated as relative (percentage).
+        If metric_id is in this list, "_rel" is appended to the file path.
+
+    cbar : bool, default=False
+        Whether to add a colorbar for individual uncertainty components.
+
+    vmax_uc : float, default=40
+        Maximum value for uncertainty component colorbar.
+
+    title : str, default=""
+        Title for the figure. If empty, uses metric-specific title.
+
+    y_title : float, default=0.98
+        Y-position for the title (0-1 scale).
+
+    filter_str : str, default=""
+        Additional filter string to append to file paths.
+
+    Returns
+    -------
+    matplotlib.collections.QuadMesh
+        The last plotted contour object (for potential further customization).
+
+    Notes
+    -----
+    - The function automatically constructs file paths based on analysis_type and parameters
+    - Maps are displayed on a Lambert Conformal projection with CONUS extent
+    - Coastlines, state boundaries, and grid lines are automatically added
+    - Color schemes are automatically selected based on metric type (Blues for precipitation, Oranges for temperature)
+    - The function handles both absolute and relative uncertainty metrics
+    - Locations without complete ensemble data are masked out
+
+    Examples
+    --------
+    >>> plot_uc_map(
+    ...     metric_id="max_tasmax",
+    ...     proj_slice="2050-2100",
+    ...     hist_slice="1950-2014",
+    ...     plot_col="ssp245",
+    ...     return_period=100,
+    ...     grid="0.25",
+    ...     fit_method="mle",
+    ...     stationary=False,
+    ...     time_str="2050-2100",
+    ...     analysis_type="extreme_value"
+    ... )
+    """
+    # We can choose to normalize by a specific metric id
+    if metric_id in rel_metric_ids:
+        rel = True
+        rel_str = "_rel"
+    else:
+        rel = False
+        rel_str = ""
     # Read
     if analysis_type == "trends":
         if metric_id == "sum_pr":
-            file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{plot_col}_{grid}grid_{regrid_method}_norm.nc"
+            file_path = f"{project_data_path}/results/{metric_id}{rel_str}_{proj_slice}_{hist_slice}_{plot_col}_{grid}grid_{regrid_method}.nc"
         else:
-            file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{plot_col}_{grid}grid_{regrid_method}.nc"
+            file_path = f"{project_data_path}/results/{metric_id}{rel_str}_{proj_slice}_{hist_slice}_{plot_col}_{grid}grid_{regrid_method}.nc"
     elif analysis_type == "extreme_value":
         if stationary:
             stat_str = "stat"
@@ -201,47 +342,60 @@ def plot_uc_map(
 
     # Plot details
     if analysis_type == "trends":
-        uc[norm] = uc[norm] * 10  # decadal trends
-        unit_labels = trend_labels
-    elif analysis_type == "averages":
-        unit_labels = avg_labels
+        if rel:
+            unit_labels = trend_labels_rel
+            uc[total_uc_col] = uc[total_uc_col] * 10 * 100  # decadal, pct trends
+        else:
+            unit_labels = trend_labels_abs
+            uc[total_uc_col] = uc[total_uc_col] * 10  # decadal, abs trends
     elif analysis_type == "extreme_value":
-        unit_labels = gev_labels
+        if "chfc" in time_str:
+            unit_labels = rel_labels
+            uc[total_uc_col] = uc[total_uc_col] * 100  # pct changes
+        else:
+            unit_labels = gev_labels
+    else:
+        if rel:
+            unit_labels = rel_labels
+        else:
+            unit_labels = avg_labels
 
     # Get vmin, vmax to format nicely for 11 levels
     nlevels = 10
-    if analysis_type == "trends" and metric_id in [
-        "avg_tas",
-        "avg_tasmin",
-        "avg_tasmax",
-    ]:  # values are much smaller here
-        vmin = np.round(uc[norm].min().to_numpy(), decimals=1)
-        vmax = np.round(uc[norm].max().to_numpy(), decimals=1)
+    if (
+        not rel
+        and analysis_type == "trends"
+        and metric_id in ["avg_tas", "avg_tasmin", "avg_tasmax"]
+    ):  # values are much smaller here
+        vmin = np.round(uc[total_uc_col].min().to_numpy(), decimals=1)
+        vmax = np.round(uc[total_uc_col].max().to_numpy(), decimals=1)
     else:
-        vmin = np.round(uc[norm].min().to_numpy(), decimals=0)
-        raw_range = uc[norm].quantile(0.95).to_numpy() - vmin
+        vmin = np.round(uc[total_uc_col].min().to_numpy(), decimals=0)
+        raw_range = uc[total_uc_col].quantile(0.95).to_numpy() - vmin
         step_size = raw_range / nlevels
         step_size = np.ceil(step_size * 2) / 2  # Round up to nearest 0.5
         vmax = vmin + (step_size * nlevels)  # 10 steps total
 
+    # cmap for total uncertainty column
     if metric_id in ["max_pr", "sum_pr"]:
         cmap = "Blues"
     else:
         cmap = "Oranges"
 
-    if norm is not None:
-        vmin_uc, vmax_uc = 0.0, vmax_uc
+    # UC scale factor: change to pct if needed
+    if rel:
+        if analysis_type == "trends" and norm is None:
+            scale_factor = 100.0 * 10.0  # decadal, pct trends
+        else:
+            scale_factor = 100.0  # pct changes
+    elif norm is not None:
         scale_factor = 100.0
-        cmap_uc = "YlGn"
     else:
         scale_factor = 1.0
-        vmin_uc = vmin
-        vmax_uc = vmax
-        cmap_uc = cmap
 
     # First plot total uncertainty
     ax = axs[0]
-    p = uc[norm].plot(
+    p = uc[total_uc_col].plot(
         ax=ax,
         levels=nlevels + 1,
         add_colorbar=True,
@@ -254,7 +408,7 @@ def plot_uc_map(
             "location": "left",
             "shrink": 0.6,
             "aspect": 10,
-            "label": f"{norm_labels[norm]} {unit_labels[metric_id]}",
+            "label": f"{norm_labels[total_uc_col]} {unit_labels[metric_id]}",
         },
     )
     # Tidy
@@ -274,9 +428,9 @@ def plot_uc_map(
             ax=ax,
             levels=nlevels + 1,
             add_colorbar=False,
-            vmin=vmin_uc,
+            vmin=0.0,
             vmax=vmax_uc,
-            cmap=cmap_uc,
+            cmap="YlGn",
             transform=ccrs.PlateCarree(),
         )
 

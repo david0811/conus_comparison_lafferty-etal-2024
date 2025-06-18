@@ -5,8 +5,8 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=3GB
 #SBATCH --partition=basic
-#SBATCH --time=6-00:00:00
-#SBATCH --account=pches_cr_default
+#SBATCH --time=2-00:00:00
+### SBATCH --account=pches_cr_default
 
 # This script creates a parameter file and submits a SLURM job for each climate output. It will
 # monitor the queue and ensure no more than $MAX_QUEUED jobs are running at any time.
@@ -83,7 +83,7 @@ SLEEP_TIME=3600  # 1 hour between checks
 for ((i=1; i<=$TOTAL_JOBS; i++)); do
     # Check current queue count
     while true; do
-        QUEUE_COUNT=$(squeue -u $USER -p basic | wc -l)
+        QUEUE_COUNT=$(squeue -u $USER | wc -l)
         QUEUE_COUNT=$((QUEUE_COUNT - 1))  # Subtract header line
         
         if [ $QUEUE_COUNT -lt $MAX_QUEUED ]; then
