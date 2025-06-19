@@ -7,9 +7,9 @@
 <sup>1 </sup>Department of Biological \& Environmental Engineering, Cornell University\
 <sup>2 </sup>NSF National Center for Atmospheric Research\
 <sup>3 </sup>U.S. Army Corps of Engineers\
-<sup>4 </sup>Department of Climate, Meteorology \& Atmospheric Sciences, University of Illinois
-<sup>5 </sup>Department of Earth \& Atmospheric Sciences, Cornell University
-<sup>6 </sup>Division of Physical and Life Sciences, Lawrence Livermore National Laboratory
+<sup>4 </sup>Department of Climate, Meteorology \& Atmospheric Sciences, University of Illinois\
+<sup>5 </sup>Department of Earth \& Atmospheric Sciences, Cornell University\
+<sup>6 </sup>Division of Physical and Life Sciences, Lawrence Livermore National Laboratory\
 <sup>7 </sup>Department of Land, Air, and Water Resources, University of California, Davis
 
 \* corresponding author:  `dcl257@cornell.edu`
@@ -29,11 +29,11 @@ TBD
 | Dataset | Data download link | Reference | Notes |
 |---------|------|---------|-------|
 | LOCA2 | https://loca.ucsd.edu/ | https://doi.org/10.1175/JHM-D-22-0194.1 | - |
-| GARD-LENS | https://oidc.rda.ucar.edu/datasets/d619000/ | https://doi.org/10.1038/s41597-024-04205-z | - | 
+| GARD-LENS | https://doi.org/10.5065/5W7W-5224 | https://doi.org/10.1038/s41597-024-04205-z | - | 
 | STAR-ESDM | TBD | https://doi.org/10.1029/2023EF004107 | - |
 | Livneh-unsplit | https://cirrus.ucsd.edu/~pierce/nonsplit_precip/ | https://doi.org/10.1175/JHM-D-20-0212.1 | Training data for LOCA2, used for SI figures only. |
-| GMET | https://www.earthsystemgrid.org/dataset/gridded_precip_and_temp.html | https://doi.org/10.1175/JHM-D-15-0026.1 | Training data for GARD-LENS, used for SI figures only. |
-| NClimGrid-Daily | https://www.ncei.noaa.gov/products/land-based-station/nclimgrid-daily | https://doi.org/10.1175/JTECH-D-22-0024.1 | Training data for STAR-ESDM, used for SI figures only. |
+| GMET | https://doi.org/10.5065/D6TH8JR2 | https://doi.org/10.1175/JHM-D-15-0026.1 | Training data for GARD-LENS, used for SI figures only. |
+| NClimGrid-Daily | https://doi.org/10.25921/c4gt-r169 | https://doi.org/10.1175/JTECH-D-22-0024.1 | Training data for STAR-ESDM, used for SI figures only. |
 | TGW | https://tgw-data.msdlive.org/ | https://doi.org/10.1038/s41597-023-02485-5 | Used for SI figures only. |
 
 ### Output data
