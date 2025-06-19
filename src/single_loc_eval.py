@@ -28,7 +28,6 @@ def gev_qq_plot(
     - df_obs: DataFrame with observed data
     - metric_id: Metric ID
     - gev_type: Type of GEV fit (stat, nonstat, nonstat-scale)
-    - plot_in_prob_space: If True, plot in 0-1 probability space instead of quantile space
 
     Outputs:
     - Dictionary with results
@@ -63,14 +62,11 @@ def gev_qq_plot(
             & (df_fit["member"] == member)
             & (df_fit["ensemble"] == ensemble)
         ]
-        loc_name = "loc"
-        scale_name = "scale"
-        shape_name = "shape"
 
     # Filter obs
     df_obs_sel = df_obs[
         (df_obs["gcm"] == gcm)
-        & (df_obs["ssp"] == ssp)
+        & (df_obs["ssp"].isin([ssp, "historical"]))
         & (df_obs["member"] == member)
         & (df_obs["ensemble"] == ensemble)
     ]
@@ -78,7 +74,11 @@ def gev_qq_plot(
     # Get empirical quantiles
     var_id = metric_id.split("_")[-1]
     observed_data = df_obs_sel.sort_values(by="time")[var_id].to_numpy()
-    times = np.sort(df_obs_sel["time"].to_numpy() - 1950)
+    times = np.sort(df_obs_sel["time"].to_numpy() - np.min(df_obs_sel["time"]))
+
+    # Invert for minima
+    if metric_id == "min_tasmin":
+        observed_data = -observed_data
 
     observed_sorted = np.sort(observed_data)
     n = len(observed_sorted)
@@ -116,31 +116,101 @@ def gev_qq_plot(
                 bootstrap_scale.iloc[i],
             )
 
-    # Get fit statistic
-    alpha = 1 - confidence_level
-    lower = np.quantile(bootstrap_theoretical_quantiles, alpha / 2, axis=0)
-    upper = np.quantile(bootstrap_theoretical_quantiles, 1 - alpha / 2, axis=0)
+        # Get fit statistic
+        alpha = 1 - confidence_level
+        lower = np.nanpercentile(bootstrap_theoretical_quantiles, alpha / 2, axis=0)
+        upper = np.nanpercentile(bootstrap_theoretical_quantiles, 1 - alpha / 2, axis=0)
+        frac_within_band = np.mean(
+            (observed_sorted >= lower) * (observed_sorted <= upper)
+        )
 
-    frac_within_band = np.mean((observed_sorted >= lower) * (observed_sorted <= upper))
+    elif gev_type == "nonstat":
+        # Standard Gumbel quantiles
+        theoretical_quantiles = -np.log(-np.log(empirical_probs))
+
+        # Main params
+        main_loc_intp = main_fit["loc_intcp"]
+        main_loc_trend = main_fit["loc_trend"]
+        main_locs = main_loc_intp + times * main_loc_trend
+        main_scale = main_fit["scale"]
+        main_shape = main_fit["shape"]
+
+        # Bootstrap params
+        bootstrap_loc_intcp = bootstrap_fits["loc_intcp"].to_numpy()
+        bootstrap_loc_trend = bootstrap_fits["loc_trend"].to_numpy()
+        bootstrap_scale = bootstrap_fits["scale"].to_numpy()
+        bootstrap_shape = bootstrap_fits["shape"].to_numpy()
+
+        # Transormed variables
+        z_resids = (
+            -1
+            / main_shape
+            * np.log(1 - main_shape * (observed_data - main_locs) / main_scale)
+        )
+        z_sorted = np.sort(z_resids)
+
+        # Bootstrap transformed variables
+        bootstrap_z_resids = np.zeros((len(bootstrap_fits), n))
+        for i in range(len(bootstrap_fits)):
+            # For each bootstrap iteration b
+            bootstrap_locs_b = bootstrap_loc_intcp[i] + times * bootstrap_loc_trend[i]
+            bootstrap_scale_b = bootstrap_scale[i]
+            bootstrap_shape_b = bootstrap_shape[i]
+
+            # Transform original data with bootstrap parameters
+            z_resids_b = (
+                -1
+                / bootstrap_shape_b
+                * np.log(
+                    1
+                    - bootstrap_shape_b
+                    * (observed_data - bootstrap_locs_b)
+                    / bootstrap_scale_b
+                )
+            )
+            z_sorted_b = np.sort(z_resids_b)
+            bootstrap_z_resids[i, :] = z_sorted_b
+
+        # Get fit statistic
+        alpha = 1 - confidence_level
+        lower = np.nanpercentile(bootstrap_z_resids, alpha / 2, axis=0)
+        upper = np.nanpercentile(bootstrap_z_resids, 1 - alpha / 2, axis=0)
+        frac_within_band = np.mean(
+            (theoretical_quantiles >= lower) * (theoretical_quantiles <= upper)
+        )
 
     if make_plot:
         fig, ax = plt.subplots()
-        ax.scatter(x=observed_sorted, y=theoretical_quantiles, color="C0")
-        ax.errorbar(
-            x=observed_sorted,
-            y=theoretical_quantiles,
-            yerr=[theoretical_quantiles - lower, upper - theoretical_quantiles],
-            color="C0",
-            linestyle="none",
-        )
+        if gev_type == "stat":
+            ax.scatter(x=observed_sorted, y=theoretical_quantiles, color="C0")
+            ax.errorbar(
+                x=observed_sorted,
+                y=theoretical_quantiles,
+                yerr=[theoretical_quantiles - lower, upper - theoretical_quantiles],
+                color="C0",
+                linestyle="none",
+            )
+        elif gev_type == "nonstat":
+            ax.scatter(x=theoretical_quantiles, y=z_sorted, color="C0")
+            ax.errorbar(
+                x=theoretical_quantiles,
+                y=z_sorted,
+                yerr=[z_sorted - lower, upper - z_sorted],
+                color="C0",
+                linestyle="none",
+            )
         ylims = ax.get_ylim()
         xlims = ax.get_xlim()
         ax.axline((1, 1), slope=1, color="C1", ls="--")
         ax.set_ylim(ylims)
         ax.set_xlim(xlims)
-        ax.set_ylabel(f"Theoretical quantile [{gev_labels[metric_id]}]")
-        ax.set_xlabel(f"Observed quantile [{gev_labels[metric_id]}]")
-        ax.set_title(f"{frac_within_band:.2f}")
+        if gev_type == "stat":
+            ax.set_ylabel(f"Theoretical quantile {gev_labels[metric_id]}")
+            ax.set_xlabel(f"Observed quantile {gev_labels[metric_id]}")
+        else:
+            ax.set_xlabel("Theoretical Gumbel quantile")
+            ax.set_ylabel("Empirical quantile")
+        ax.set_title(f"{100 * frac_within_band:.2f}% coverage")
         ax.grid()
         plt.show()
 
