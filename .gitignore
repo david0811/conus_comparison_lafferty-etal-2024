@@ -8,3 +8,5 @@ scripts/old/*
 figs/
 .vscode
 *.egg-info/
+*.sh.e*
+*.sh.o*

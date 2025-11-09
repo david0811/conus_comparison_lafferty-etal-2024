@@ -1,12 +1,12 @@
 #!/bin/bash
-#SBATCH --output=./logs/jobs/eva_nonstat-scale-%a.log
-#SBATCH --error=./logs/jobs/eva_nonstat-scale-%a.err
+#SBATCH --output=/storage/home/dcl5300/work/current_projects/conus_comparison_lafferty-etal-2024/scripts/logs/eva_nonstat-scale-%a.log
+#SBATCH --error=/storage/home/dcl5300/work/current_projects/conus_comparison_lafferty-etal-2024/scripts/logs/eva_nonstat-scale-%a.err
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=3GB
 #SBATCH --partition=basic
-#SBATCH --time=2-00:00:00
-### SBATCH --account=pches_cr_default
+#SBATCH --time=14-00:00:00
+#SBATCH --account=pches_cr_default
 
 # This script creates a parameter file and submits a SLURM job for each climate output. It will
 # monitor the queue and ensure no more than $MAX_QUEUED jobs are running at any time.
@@ -16,13 +16,13 @@ echo "Job started on $(hostname) at $(date)"
 #######################################################################
 # Set the metric IDs to search
 # METRIC_IDS=("max_pr" "max_tasmax" "min_tasmin" "max_cdd" "max_hdd")
-METRIC_IDS=("max_pr" "max_tasmax" "min_tasmin")
-# METRIC_IDS=("min_tasmin" "max_cdd" "max_hdd")
+# METRIC_IDS=("max_pr" "max_tasmax" "min_tasmin")
+METRIC_IDS=("max_cdd" "max_hdd")
 
 
 # Define allowed ensembles
-ALLOWED_ENSEMBLES=("STAR-ESDM" "LOCA2" "GARD-LENS")
-# ALLOWED_ENSEMBLES=("LOCA2" "GARD-LENS")
+# ALLOWED_ENSEMBLES=("STAR-ESDM" "LOCA2" "GARD-LENS")
+ALLOWED_ENSEMBLES=("LOCA2" "GARD-LENS")
 # ALLOWED_ENSEMBLES=("STAR-ESDM")
 
 # Set bootstrap or not
@@ -77,7 +77,7 @@ done
 
 # Count the number of jobs
 TOTAL_JOBS=$(wc -l < $PARAM_FILE)
-MAX_QUEUED=20  # Set to just below your submission limit
+MAX_QUEUED=10  # Set to just below your submission limit
 SLEEP_TIME=3600  # 1 hour between checks
 
 for ((i=1; i<=$TOTAL_JOBS; i++)); do

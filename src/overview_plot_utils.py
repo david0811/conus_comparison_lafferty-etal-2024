@@ -52,7 +52,7 @@ def plot_total_uncertainty(
     )
 
     ax.set_xlabel("")
-    ax.set_ylabel(f"{pu.title_labels[metric_id]} {unit}")
+    ax.set_ylabel(f"{pu.title_labels[metric_id]} anomaly {unit}")
     ax.set_title(f"{title_index} Total uncertainty", loc="left", style="italic")
     ax.spines[["right", "top"]].set_visible(False)
     ax.text(
@@ -120,20 +120,6 @@ def plot_scenario_uncertainty(
         df_plot_sel = df_plot.sort_values("time").query("time > 2015")
         ax.plot(df_plot_sel["time"], df_plot_sel[var_id], color="silver", alpha=0.5)
 
-    # Plot quantiles
-    # df_ssp245.query("time > 2015").groupby("time").quantile(
-    #     0.01, numeric_only=True
-    # ).plot(y="tasmax", legend=None, lw=2, ax=ax, color=ssp245_color, ls="--")
-    # df_ssp245.query("time > 2015").groupby("time").quantile(
-    #     0.99, numeric_only=True
-    # ).plot(y="tasmax", legend=None, lw=2, ax=ax, color=ssp245_color, ls="--")
-    # df_ssp585.query("time > 2015").groupby("time").quantile(
-    #     0.01, numeric_only=True
-    # ).plot(y="tasmax", legend=None, lw=2, ax=ax, color=ssp585_color, ls="--")
-    # df_ssp585.query("time > 2015").groupby("time").quantile(
-    #     0.99, numeric_only=True
-    # ).plot(y="tasmax", legend=None, lw=2, ax=ax, color=ssp585_color, ls="--")
-
     # Plot means
     df_ssp245.query("time <= 2015").groupby("time").mean(numeric_only=True).plot(
         y="tasmax", legend=None, lw=2, ax=ax, color="black"
@@ -147,7 +133,7 @@ def plot_scenario_uncertainty(
 
     # Tidy
     ax.set_xlabel("")
-    ax.set_ylabel(f"{pu.title_labels[metric_id]} {unit}")
+    ax.set_ylabel(f"{pu.title_labels[metric_id]} anomaly {unit}")
     ax.set_title(f"{title_index} Scenario uncertainty", loc="left", style="italic")
     ax.text(
         xtext,
@@ -229,7 +215,7 @@ def plot_response_uncertainty(
 
     # Tidy
     ax.set_xlabel("")
-    ax.set_ylabel(f"{pu.title_labels[metric_id]} {unit}")
+    ax.set_ylabel(f"{pu.title_labels[metric_id]} anomaly {unit}")
     ax.set_title(f"{title_index} Response uncertainty", loc="left", style="italic")
     ax.text(
         xtext,
@@ -286,7 +272,7 @@ def plot_internal_variability(
 
     # Tidy
     ax.set_xlabel("")
-    ax.set_ylabel(f"{pu.title_labels[metric_id]} {unit}")
+    ax.set_ylabel(f"{pu.title_labels[metric_id]} anomaly {unit}")
     ax.set_title(f"{title_index} Internal variability", loc="left", style="italic")
     ax.text(
         xtext,
@@ -353,7 +339,7 @@ def plot_downscaling_uncertainty(
 
     # Tidy
     ax.set_xlabel("")
-    ax.set_ylabel(f"{pu.title_labels[metric_id]} {unit}")
+    ax.set_ylabel(f"{pu.title_labels[metric_id]} anomaly {unit}")
     ax.set_title(f"{title_index} Downscaling uncertainty", loc="left", style="italic")
     ax.text(
         xtext,
@@ -397,6 +383,7 @@ def plot_gev_uncertainty(
     xtext=0.99,
     ytext=0.02,
     include_stat_fit=True,
+    anomaly_baseline=0.0
 ):
     var_id = metric_id.split("_")[1]
     df_sel = df[
@@ -409,7 +396,7 @@ def plot_gev_uncertainty(
 
     # Read RLs
     stat_n_boot = 1000
-    nonstat_n_boot = 1000
+    nonstat_n_boot = 100
     sample_str = "_samples"
     stat_fit_method = "lmom"
     nonstat_fit_method = "mle"
@@ -429,7 +416,7 @@ def plot_gev_uncertainty(
     ]
 
     df_nonstat = pd.read_csv(
-        f"{project_data_path}/extreme_value/cities/original_grid/freq/{city}_{metric_id}_{nonstat_slice}_{nonstat_fit_method}_nonstat_nboot{nonstat_n_boot}{sample_str}.csv"
+        f"{project_data_path}/extreme_value/cities/original_grid/freq/{city}_{metric_id}_{nonstat_slice}_{nonstat_fit_method}_nonstat_nboot{nonstat_n_boot}{sample_str}_scale.csv"
     )
     df_nonstat_sel = df_nonstat[
         (df_nonstat["gcm"] == gcm)
@@ -446,21 +433,21 @@ def plot_gev_uncertainty(
     if include_stat_fit:
         ax.fill_between(
             x=[2050, 2100],
-            y1=[df_stat_sel[f"{col_name}_proj"].quantile(0.975)],
-            y2=[df_stat_sel[f"{col_name}_proj"].quantile(0.025)],
+            y1=[df_stat_sel[f"{col_name}_proj"].quantile(0.975) - anomaly_baseline],
+            y2=[df_stat_sel[f"{col_name}_proj"].quantile(0.025) -  anomaly_baseline],
             color="violet",
             alpha=0.5,
         )
         ax.hlines(
-            df_stat_sel[f"{col_name}_proj"].median(),
+            df_stat_sel[f"{col_name}_proj"].median() - anomaly_baseline,
             2050,
             2100,
             colors="violet",
             ls="--",
             label="Stationary (2050-2100)",
         )
-        y1 = df_stat_sel[f"{col_name}_proj"].quantile(0.975)
-        y2 = df_stat_sel[f"{col_name}_proj"].quantile(0.025)
+        y1 = df_stat_sel[f"{col_name}_proj"].quantile(0.975) - anomaly_baseline
+        y2 = df_stat_sel[f"{col_name}_proj"].quantile(0.025) - anomaly_baseline
         ax.annotate(
             "",
             xy=(2103, y1),
@@ -475,9 +462,7 @@ def plot_gev_uncertainty(
     years = [1950, 1975, 2000, 2050, 2075, 2100]
     ax.plot(
         years,
-        df_nonstat_sel_main[[f"{col_name}_{year}" for year in years]]
-        .to_numpy()
-        .flatten(),
+        df_nonstat_sel_main[[f"{col_name}_{year}" for year in years]].to_numpy().flatten() - anomaly_baseline,
         color="indigo",
         ls="dotted",
         label="Non-stationary (1950-2100)",
@@ -485,13 +470,13 @@ def plot_gev_uncertainty(
 
     ax.fill_between(
         x=years,
-        y1=df_nonstat_sel[[f"{col_name}_{year}" for year in years]].quantile(0.975),
-        y2=df_nonstat_sel[[f"{col_name}_{year}" for year in years]].quantile(0.025),
+        y1=df_nonstat_sel[[f"{col_name}_{year}" for year in years]].quantile(0.975) - anomaly_baseline,
+        y2=df_nonstat_sel[[f"{col_name}_{year}" for year in years]].quantile(0.025) - anomaly_baseline,
         color="indigo",
         alpha=0.5,
     )
-    y1 = df_nonstat_sel[f"{col_name}_2100"].quantile(0.975)
-    y2 = df_nonstat_sel[f"{col_name}_2100"].quantile(0.025)
+    y1 = df_nonstat_sel[f"{col_name}_2100"].quantile(0.975) - anomaly_baseline
+    y2 = df_nonstat_sel[f"{col_name}_2100"].quantile(0.025) - anomaly_baseline
     ax.annotate(
         "",
         xy=(2106, y1),
@@ -505,7 +490,7 @@ def plot_gev_uncertainty(
         ax.set_ylim(ylims)
 
     ax.set_xlabel("")
-    ax.set_ylabel(f"{pu.title_labels[metric_id]} {unit}")
+    ax.set_ylabel(f"{pu.title_labels[metric_id]} anomaly {unit}")
     ax.set_title(
         f"{title_index} GEV fit uncertainty: 100-year return level",
         loc="left",
@@ -523,7 +508,3 @@ def plot_gev_uncertainty(
 
     # Apply the UC and return for second plot
     return df_stat, df_nonstat
-    # uc_df_stat_abs = sacu.calculate_df_uc(df_stat, "")
-    # uc_df_nonstat = sacu.calculate_df_uc(
-    #     df_nonstat, city, metric_id, ssp, ensemble, gcm, member
-    # )

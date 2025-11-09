@@ -103,7 +103,7 @@ def read_loca(
                 ds_loca_hist = xr.combine_by_coords(
                     [
                         _preprocess_func(xr.open_dataset(file)[cols_to_keep])
-                        for file in loca_hist_files
+                        for file in loca_hist_files if 'obs' not in file
                     ]
                 )
                 ds_loca = xr.concat([ds_loca, ds_loca_hist], dim="ssp")
@@ -815,6 +815,7 @@ def uc_all(
     )
     if not include_fit_uc:
         fit_uc = xr.zeros_like(uc_99w_main)
+        uc_99w_boot = xr.zeros_like(uc_99w_main)
 
     del ds_loca, ds_star, ds_gard  # memory management
 
