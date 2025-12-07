@@ -5,8 +5,8 @@ import pandas as pd
 
 import gev_utils as gevu
 import gev_stat_utils as gevsu
-import gev_nonstat_trend_utils as gevnst
-import gev_nonstat_scale_utils as gevnss
+import gev_nonstat_loc_utils as gevnsl
+import gev_nonstat_locscale_utils as gevnss
 from utils import check_data_length
 from utils import roar_code_path as project_code_path
 from utils import roar_data_path as project_data_path
@@ -352,7 +352,7 @@ def _fit_nonstationary_gev(
         )
     else:
         # Fit with only location non-stationary (original behavior)
-        params = gevnst._fit_gev_1d_nonstationary(
+        params = gevnsl._fit_gev_1d_nonstationary(
             data=scalar * data,
             expected_length=expected_length,
             fit_method=fit_method,
@@ -426,7 +426,7 @@ def _perform_bootstrap(
             )
         else:
             bootstrap_params, bootstrap_rls, bootstrap_rl_diffs, bootstrap_rl_chfcs = (
-                gevnst._gev_parametric_bootstrap_1d_nonstationary(
+                gevnsl._gev_parametric_bootstrap_1d_nonstationary(
                     params=params,
                     expected_length=expected_length,
                     starting_year=starting_year,
@@ -1319,7 +1319,7 @@ def fit_ensemble_gev_city(
     if stationary:
         file_name = f"{city}_{metric_id}_{hist_slice[0]}-{hist_slice[1]}_{proj_slice[0]}-{proj_slice[1]}_{fit_method}_{stat_str}_nbootproj{n_boot_proj}_nboothist{n_boot_hist}{sample_str}{neighbor_str}.csv"
     else:
-        file_name = f"{city}_{metric_id}_{years[0]}-{years[1]}_{fit_method}_{stat_str}_nboot{n_boot_proj}{sample_str}{neighbor_str}{scale_str}.csv"
+        file_name = f"{city}_{metric_id}_{years[0]}-{years[1]}_{fit_method}_{stat_str}{scale_str}_nboot{n_boot_proj}{sample_str}{neighbor_str}.csv"
 
     if os.path.exists(
         f"{project_data_path}/extreme_value/cities/original_grid/freq/{file_name}"

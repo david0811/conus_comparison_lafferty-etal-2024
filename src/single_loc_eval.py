@@ -13,7 +13,7 @@ def gev_qq_plot(
     member,
     ensemble,
     gev_type,
-    make_plot=True,
+    ax=None,
 ):
     """
     Plot a GEV QQ plot for a single location with correct confidence intervals.
@@ -54,7 +54,7 @@ def gev_qq_plot(
             loc_name = "loc_proj"
             scale_name = "scale_proj"
             shape_name = "shape_proj"
-    elif gev_type == "nonstat":
+    else:
         df_fit_sel = df_fit[
             (df_fit["gcm"] == gcm)
             & (df_fit["ssp"].isin([ssp, "historical"]))
@@ -79,7 +79,7 @@ def gev_qq_plot(
             & (df_obs["time"] >= year_min)
             & (df_obs["time"] <= year_max)
         ]
-    elif gev_type == "nonstat":
+    else:
         df_obs_sel = df_obs[
             (df_obs["gcm"] == gcm)
             & (df_obs["ssp"].isin([ssp, "historical"]))
@@ -103,7 +103,6 @@ def gev_qq_plot(
 
     # Get main fit and bootstrap fits
     main_fit = df_fit_sel[df_fit_sel["n_boot"] == "main"].iloc[0]
-    # bootstrap_fits = df_fit_sel[df_fit_sel["n_boot"] != "main"]
 
     if gev_type == "stat":
         # Main params
@@ -119,34 +118,10 @@ def gev_qq_plot(
         # Quantile RMSE
         qq_rmse = np.sqrt(np.mean((theoretical_quantiles - observed_sorted) ** 2))
 
-        # # Bootstrap params
-        # bootstrap_loc = bootstrap_fits[loc_name]
-        # bootstrap_scale = bootstrap_fits[scale_name]
-        # bootstrap_shape = bootstrap_fits[shape_name]
+        # Log likelihood
+        log_lik = np.sum(genextreme.logpdf(observed_data, main_shape, main_loc, main_scale))
 
-        # # Bootstrap quantiles
-        # bootstrap_theoretical_quantiles = np.zeros((len(bootstrap_fits), n))
-
-        # for i in range(len(bootstrap_fits)):
-        #     # Convert these probabilities to theoretical quantiles using bootstrap fit
-        #     bootstrap_theoretical_quantiles[i, :] = genextreme.ppf(
-        #         empirical_probs,
-        #         bootstrap_shape.iloc[i],
-        #         bootstrap_loc.iloc[i],
-        #         bootstrap_scale.iloc[i],
-        #     )
-
-        # # Get confidence intervals for theoretical quantiles
-        # alpha = 1 - confidence_level
-        # lower = np.nanpercentile(bootstrap_theoretical_quantiles, alpha / 2, axis=0)
-        # upper = np.nanpercentile(bootstrap_theoretical_quantiles, 1 - alpha / 2, axis=0)
-
-        # # Calculate coverage
-        # frac_within_band = np.mean(
-        #     (observed_sorted >= lower) * (observed_sorted <= upper)
-        # )
-
-    elif gev_type == "nonstat":
+    elif gev_type in ["nonstat", "nonstat_scale"]:
         # Standard Gumbel quantiles
         theoretical_quantiles = -np.log(-np.log(empirical_probs))
 
@@ -154,85 +129,43 @@ def gev_qq_plot(
         main_loc_intp = main_fit["loc_intcp"]
         main_loc_trend = main_fit["loc_trend"]
         main_locs = main_loc_intp + times * main_loc_trend
-        main_scale = main_fit["scale"]
+        if gev_type == "nonstat_scale":
+            main_scale_intp = main_fit["log_scale_intcp"]
+            main_scale_trend = main_fit["log_scale_trend"]
+            main_scales = np.exp(main_scale_intp + times * main_scale_trend)
+        else:
+            main_scales = main_fit["scale"]
         main_shape = main_fit["shape"]
 
         # Transormed variables
         if np.abs(main_shape) < 1e-6:
-            z_resids = (observed_data - main_locs) / main_scale
+            z_resids = (observed_data - main_locs) / main_scales
         else:
             z_resids = (
                 -1
                 / main_shape
-                * np.log(1 - main_shape * (observed_data - main_locs) / main_scale)
+                * np.log(1 - main_shape * (observed_data - main_locs) / main_scales)
             )
+
         z_sorted = np.sort(z_resids)
 
         # Quantile RMSE
         qq_rmse = np.sqrt(np.mean((theoretical_quantiles - z_sorted) ** 2))
 
-        # # Bootstrap params
-        # bootstrap_loc_intcp = bootstrap_fits["loc_intcp"].to_numpy()
-        # bootstrap_loc_trend = bootstrap_fits["loc_trend"].to_numpy()
-        # bootstrap_scale = bootstrap_fits["scale"].to_numpy()
-        # bootstrap_shape = bootstrap_fits["shape"].to_numpy()
+        # Log likelihood
+        log_lik = np.sum(genextreme.logpdf(
+            observed_data,
+            main_shape,
+            main_locs,
+            main_scales,
+        ))
 
-        # # Bootstrap transformed variables
-        # bootstrap_z_resids = np.zeros((len(bootstrap_fits), n))
-        # for i in range(len(bootstrap_fits)):
-        #     # For each bootstrap iteration b
-        #     bootstrap_locs_b = bootstrap_loc_intcp[i] + times * bootstrap_loc_trend[i]
-        #     bootstrap_scale_b = bootstrap_scale[i]
-        #     bootstrap_shape_b = bootstrap_shape[i]
-
-        #     # Transform original data with bootstrap parameters
-        #     z_resids_b = (
-        #         -1
-        #         / bootstrap_shape_b
-        #         * np.log(
-        #             1
-        #             - bootstrap_shape_b
-        #             * (observed_data - bootstrap_locs_b)
-        #             / bootstrap_scale_b
-        #         )
-        #     )
-        #     z_sorted_b = np.sort(z_resids_b)
-        #     bootstrap_z_resids[i, :] = z_sorted_b
-
-        # # Get fit statistic
-        # alpha = 1 - confidence_level
-        # lower = np.nanpercentile(bootstrap_z_resids, alpha / 2, axis=0)
-        # upper = np.nanpercentile(bootstrap_z_resids, 1 - alpha / 2, axis=0)
-        # frac_within_band = np.mean(
-        #     (theoretical_quantiles >= lower) * (theoretical_quantiles <= upper)
-        # )
-
-    if make_plot:
-        fig, ax = plt.subplots()
+    # Plot
+    if ax is not None:
         if gev_type == "stat":
             ax.scatter(x=observed_sorted, y=theoretical_quantiles, color="C0")
-            # ax.errorbar(
-            #     x=observed_sorted,
-            #     y=theoretical_quantiles,
-            #     yerr=[
-            #         np.abs(theoretical_quantiles - lower),
-            #         np.abs(upper - theoretical_quantiles),
-            #     ],
-            #     color="C0",
-            #     linestyle="none",
-            # )
-        elif gev_type == "nonstat":
+        else:
             ax.scatter(x=theoretical_quantiles, y=z_sorted, color="C0")
-            # ax.errorbar(
-            #     x=theoretical_quantiles,
-            #     y=z_sorted,
-            #     yerr=[
-            #         np.abs(z_sorted - lower),
-            #         np.abs(upper - z_sorted),
-            #     ],
-            #     color="C0",
-            #     linestyle="none",
-            # )
         ylims = ax.get_ylim()
         xlims = ax.get_xlim()
         ax.axline((1, 1), slope=1, color="C1", ls="--")
@@ -244,8 +177,17 @@ def gev_qq_plot(
         else:
             ax.set_xlabel("Theoretical Gumbel quantile")
             ax.set_ylabel("Empirical quantile")
-        ax.set_title(f"QQ RMSE: {qq_rmse:.2f}")
         ax.grid()
-        plt.show()
 
-    return qq_rmse
+    # Return stats
+    # Add after calculating log_lik
+    if gev_type == "stat":
+        n_params = 3  # loc, scale, shape
+    elif gev_type == "nonstat":
+        n_params = 4  # loc_intcp, loc_trend, scale, shape
+    else:  # nonstat_scale
+        n_params = 5  # loc_intcp, loc_trend, scale_intcp, scale_trend, shape
+
+    aic = 2 * n_params - 2 * log_lik
+    bic = n_params * np.log(n) - 2 * log_lik
+    return qq_rmse, log_lik, aic, bic

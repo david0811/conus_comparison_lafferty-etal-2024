@@ -13,6 +13,7 @@ def read_loca(
     proj_slice,
     hist_slice,
     stationary,
+    stat_name,
     fit_method,
     bootstrap,
     cols_to_keep,
@@ -37,7 +38,6 @@ def read_loca(
         loca_regrid_str = f"_{regrid_method}"
 
     # Get file info
-    stat_name = "stat" if stationary else "nonstat"
     if stationary:
         boot_name = (
             f"nbootproj{n_boot_proj}_nboothist{n_boot_hist}" if bootstrap else "main"
@@ -163,6 +163,7 @@ def read_star(
     proj_slice,
     hist_slice,
     stationary,
+    stat_name,
     fit_method,
     bootstrap,
     cols_to_keep,
@@ -187,7 +188,6 @@ def read_star(
         star_regrid_str = ""
 
     # Get file info
-    stat_name = "stat" if stationary else "nonstat"
     if stationary:
         boot_name = (
             f"nbootproj{n_boot_proj}_nboothist{n_boot_hist}" if bootstrap else "main"
@@ -272,6 +272,7 @@ def read_gard(
     proj_slice,
     hist_slice,
     stationary,
+    stat_name,
     fit_method,
     bootstrap,
     cols_to_keep,
@@ -296,7 +297,6 @@ def read_gard(
         gard_regrid_str = f"_{regrid_method}"
 
     # Get file info
-    stat_name = "stat" if stationary else "nonstat"
     if stationary:
         boot_name = (
             f"nbootproj{n_boot_proj}_nboothist{n_boot_hist}" if bootstrap else "main"
@@ -373,6 +373,7 @@ def read_all(
     proj_slice,
     hist_slice,
     stationary,
+    stat_name,
     fit_method,
     bootstrap,
     cols_to_keep,
@@ -392,6 +393,7 @@ def read_all(
         proj_slice=proj_slice,
         hist_slice=hist_slice,
         stationary=stationary,
+        stat_name=stat_name,
         fit_method=fit_method,
         bootstrap=bootstrap,
         cols_to_keep=cols_to_keep,
@@ -408,6 +410,7 @@ def read_all(
         proj_slice=proj_slice,
         hist_slice=hist_slice,
         stationary=stationary,
+        stat_name=stat_name,
         fit_method=fit_method,
         bootstrap=bootstrap,
         cols_to_keep=cols_to_keep,
@@ -424,6 +427,7 @@ def read_all(
         proj_slice=proj_slice,
         hist_slice=hist_slice,
         stationary=stationary,
+        stat_name=stat_name,
         fit_method=fit_method,
         bootstrap=bootstrap,
         cols_to_keep=cols_to_keep,
@@ -536,13 +540,13 @@ def compute_iv_uc(ds_loca, ds_gard, ds_star, var_name, min_members=5):
     gard_iv_range = ensemble_iv_range(ds_gard, min_members, var_name)
 
     # Combine and average over ensembles
-    # Again filter due to regridding issues
     iv_uc = xr.concat([gard_iv_range, star_iv_range, loca_iv_range], dim="ensemble")
-    uq_maxs = (
-        iv_uc.count(dim=["ensemble", "gcm", "ssp"])
-        == iv_uc.count(dim=["ensemble", "gcm", "ssp"]).max()
-    )
-    iv_uc = iv_uc.where(uq_maxs).mean(dim=["ensemble", "gcm", "ssp"])
+    # There are 19 GCM-SSPs total with > 5 members, so require at least 10 to estimates
+    # of internal variability uncertainty (at each gridpoint) to calculate the average.
+    # After checking, vasty majority of gridpoints have all (some issues with min_tasmin over
+    # Florida and Southwest).
+    include_mask = iv_uc.count(dim=["ensemble", "gcm", "ssp"]) > 10
+    iv_uc = iv_uc.where(include_mask).mean(dim=["ensemble", "gcm", "ssp"])
 
     return iv_uc
 
@@ -730,6 +734,7 @@ def uc_all(
     grid,
     regrid_method,
     stationary,
+    stat_name,
     fit_method,
     col_name_main,
     col_name_boot,
@@ -756,6 +761,7 @@ def uc_all(
         proj_slice=proj_slice,
         hist_slice=hist_slice,
         stationary=stationary,
+        stat_name=stat_name,
         fit_method=fit_method,
         bootstrap=False,
         cols_to_keep=[col_name_main],
@@ -829,6 +835,7 @@ def uc_all(
             proj_slice=proj_slice,
             hist_slice="1950-2014",
             stationary=stationary,
+            stat_name=stat_name,
             fit_method=fit_method,
             bootstrap=True,
             cols_to_keep=[col_name_boot],
@@ -863,3 +870,95 @@ def uc_all(
         return uc, ds_loca, ds_star, ds_gard
     else:
         return uc
+
+
+def summary_stats_main(
+    metric_id,
+    grid,
+    regrid_method,
+    stationary,
+    stat_name,
+    fit_method,
+    col_name,
+    proj_slice,
+    hist_slice,
+    analysis_type="extreme_value",
+    rel=False,
+    _preprocess_func=lambda x: x,
+    filter_vals=None,
+):
+    """
+    Calculates summary statistics (mean, median, etc) on the main fit results 
+    (not accounting for bootstrap).
+    """
+    # Read all: main
+    ds_loca, ds_star, ds_gard = read_all(
+        metric_id=metric_id,
+        grid=grid,
+        regrid_method=regrid_method,
+        proj_slice=proj_slice,
+        hist_slice=hist_slice,
+        stationary=stationary,
+        stat_name=stat_name,
+        fit_method=fit_method,
+        bootstrap=False,
+        cols_to_keep=[col_name],
+        analysis_type=analysis_type,
+        rel=rel,
+        _preprocess_func=_preprocess_func,
+    )
+
+    # Here we drop the quantile dimension
+    if "quantile" in ds_star.dims:
+        ds_star = ds_star.sel(quantile='main').drop_vars('quantile')
+    if "quantile" in ds_gard.dims:
+        ds_gard = ds_gard.sel(quantile='main').drop_vars('quantile')
+    if "quantile" in ds_loca.dims:
+        ds_loca = ds_loca.sel(quantile='main').drop_vars('quantile')
+
+    # Filter values if desired
+    if filter_vals is not None:
+        ds_loca = ds_loca.where(ds_loca[col_name] >= filter_vals[0])
+        ds_loca = ds_loca.where(ds_loca[col_name] <= filter_vals[1])
+
+        ds_gard = ds_gard.where(ds_gard[col_name] >= filter_vals[0])
+        ds_gard = ds_gard.where(ds_gard[col_name] <= filter_vals[1])
+
+        ds_star = ds_star.where(ds_star[col_name] >= filter_vals[0])
+        ds_star = ds_star.where(ds_star[col_name] <= filter_vals[1])
+
+    # For the stationary best fit results, future and historical are stored separately
+    # so we need to subtract if change is desired (indicated by hist_slice is not None)
+    if analysis_type == "extreme_value":
+        if hist_slice is not None:
+            ds_loca = ds_loca - ds_loca.sel(ssp="historical")
+            ds_loca = ds_loca.drop_sel(ssp="historical")
+
+            ds_gard = ds_gard - ds_gard.sel(ssp="historical")
+            ds_gard = ds_gard.drop_sel(ssp="historical")
+
+            ds_star = ds_star - ds_star.sel(ssp="historical")
+            ds_star = ds_star.drop_sel(ssp="historical")
+
+    return xr.concat(
+        [
+            xr.concat([
+                ds_loca.mean(dim=["gcm", "member", "ssp"]).assign_coords(quantile = 'mean'),
+                ds_loca.median(dim=["gcm", "member", "ssp"]).assign_coords(quantile = 'median'),
+                ds_loca.quantile(0.01, dim=['gcm', 'member', 'ssp']).assign_coords(quantile = 'q01'),
+                ds_loca.quantile(0.99, dim=['gcm', 'member', 'ssp']).assign_coords(quantile = 'q99'),
+            ], dim='quantile', coords='minimal'),
+            xr.concat([
+                ds_gard.mean(dim=["gcm", "member", "ssp"]).assign_coords(quantile = 'mean'),
+                ds_gard.median(dim=["gcm", "member", "ssp"]).assign_coords(quantile = 'median'),
+                ds_gard.quantile(0.01, dim=['gcm', 'member', 'ssp']).assign_coords(quantile = 'q01'),
+                ds_gard.quantile(0.99, dim=['gcm', 'member', 'ssp']).assign_coords(quantile = 'q99'),
+            ], dim='quantile', coords='minimal'),
+            xr.concat([
+                ds_star.mean(dim=["gcm", "member", "ssp"]).assign_coords(quantile = 'mean'),
+                ds_star.median(dim=["gcm", "member", "ssp"]).assign_coords(quantile = 'median'),
+                ds_star.quantile(0.01, dim=['gcm', 'member', 'ssp']).assign_coords(quantile = 'q01'),
+                ds_star.quantile(0.99, dim=['gcm', 'member', 'ssp']).assign_coords(quantile = 'q99'),
+            ], dim='quantile', coords='minimal'),
+        ], dim='ensemble'
+    )

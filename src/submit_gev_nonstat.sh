@@ -4,8 +4,8 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=20
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=80GB
-#SBATCH --time=12:00:00
+#SBATCH --mem=100GB
+#SBATCH --time=24:00:00
 #SBATCH --partition=basic
 #####SBATCH --account=pches_cr_default
 

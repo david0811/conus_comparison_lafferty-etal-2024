@@ -122,13 +122,13 @@ def plot_scenario_uncertainty(
 
     # Plot means
     df_ssp245.query("time <= 2015").groupby("time").mean(numeric_only=True).plot(
-        y="tasmax", legend=None, lw=2, ax=ax, color="black"
+        y=var_id, legend=None, lw=2, ax=ax, color="black"
     )
     df_ssp585.query("time > 2015").groupby("time").mean(numeric_only=True).plot(
-        y="tasmax", label="SSP5-8.5", lw=2, ax=ax, color=ssp585_color
+        y=var_id, label="SSP5-8.5", lw=2, ax=ax, color=ssp585_color
     )
     df_ssp245.query("time > 2015").groupby("time").mean(numeric_only=True).plot(
-        y="tasmax", label="SSP2-4.5", lw=2, ax=ax, color=ssp245_color
+        y=var_id, label="SSP2-4.5", lw=2, ax=ax, color=ssp245_color
     )
 
     # Tidy
@@ -207,10 +207,10 @@ def plot_response_uncertainty(
 
     # Plot means
     df_gcm1.groupby("time").mean(numeric_only=True).plot(
-        y="tasmax", label=gcm1, lw=2, ax=ax
+        y=var_id, label=gcm1, lw=2, ax=ax
     )
     df_gcm2.groupby("time").mean(numeric_only=True).plot(
-        y="tasmax", label=gcm2, lw=2, ax=ax
+        y=var_id, label=gcm2, lw=2, ax=ax
     )
 
     # Tidy

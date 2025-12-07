@@ -257,7 +257,7 @@ def get_city_timeseries_all(
         )
     else:
         store_path = (
-            f"{project_data_path}/metrics/cities/{city}_{metric_id}_neighbors.csv"
+            f"{project_data_path}/metrics/cities/{city}_{metric_id}.csv"
         )
 
     if os.path.exists(store_path):

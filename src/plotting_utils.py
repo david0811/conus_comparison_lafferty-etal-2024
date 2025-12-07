@@ -128,6 +128,7 @@ def plot_uc_map(
     grid,
     fit_method,
     stationary,
+    stat_str,
     time_str,
     analysis_type,
     plot_fit_uc=False,
@@ -274,13 +275,11 @@ def plot_uc_map(
             file_path = f"{project_data_path}/results/{metric_id}{rel_str}_{proj_slice}_{hist_slice}_{plot_col}_{grid}grid_{regrid_method}.nc"
     elif analysis_type == "extreme_value":
         if stationary:
-            stat_str = "stat"
             if time_str is not None:
                 file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{return_period}yr_return_level_{time_str}_{fit_method}_{stat_str}_{grid}grid_{regrid_method}{filter_str}.nc"
             else:
                 file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{return_period}yr_return_level_{fit_method}_{stat_str}_{grid}grid_{regrid_method}{filter_str}.nc"
         else:
-            stat_str = "nonstat"
             file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{return_period}yr_return_level_{time_str}_{fit_method}_{stat_str}_{grid}grid_{regrid_method}{filter_str}.nc"
     elif analysis_type == "averages":
         file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{grid}grid_{regrid_method}{filter_str}.nc"
@@ -486,6 +485,7 @@ def plot_uc_maps(
     grid,
     fit_method,
     stationary,
+    stat_str,
     time_str,
     analysis_type,
     suptitle=None,
@@ -523,6 +523,7 @@ def plot_uc_maps(
             grid=grid,
             fit_method=fit_method,
             stationary=stationary,
+            stat_str=stat_str,
             time_str=time_str,
             analysis_type=analysis_type,
             vmax_uc=vmax_uc,
