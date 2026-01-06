@@ -11,6 +11,8 @@ import sa_city_utils as sacu
 from utils import (
     gard_gcms,
     gev_metric_ids,
+)
+from utils import (
     roar_data_path as project_data_path,
 )
 
@@ -43,6 +45,12 @@ rel_labels = {
     "max_hdd": "[%]",
     "max_pr": "[%]",
     "min_tasmin": "[%]",
+}
+norm_labels = {
+    "uc_99w": "99% range",
+    "uc_99w_main": "99% range",
+    "uc_95w_main": "95% range",
+    "uc_range_main": "Total range",
 }
 trend_labels_abs = {
     "avg_tas": "\n[C/decade]",
@@ -307,27 +315,6 @@ def plot_uc_map(
         uc["dsc_uc"] = uc["dsc_uc"] / uc[norm]
         uc["fit_uc"] = uc["fit_uc"] / uc[norm]
 
-    title_labels = {
-        "max_tasmax": "Annual maximum temperature",
-        "max_cdd": "Annual 1-day maximum CDD",
-        "max_hdd": "Annual 1-day maximum HDD",
-        "max_pr": "Annual 1-day maximum precipitation",
-        "min_tasmin": "Annual minimum temperature",
-        "avg_tas": "Annual average temperature",
-        "avg_tasmin": "Annual average daily minimum temperature",
-        "avg_tasmax": "Annual average daily maximum temperature",
-        "sum_pr": "Annual total precipitation",
-        "sum_cdd": "Annual total cooling degree days",
-        "sum_hdd": "Annual total heating degree days",
-    }
-
-    norm_labels = {
-        "uc_99w": "99% range",
-        "uc_99w_main": "99% range",
-        "uc_95w_main": "95% range",
-        "uc_range_main": "Total range",
-    }
-
     if axs is None:
         ncols = 5 if analysis_type == "averages" else 6
         width = 11 if analysis_type == "averages" else 14
@@ -435,9 +422,7 @@ def plot_uc_map(
 
         # Tidy
         ax.coastlines()
-        gl = ax.gridlines(
-            draw_labels=False, x_inline=False, rotate_labels=False, alpha=0.2
-        )
+        gl = ax.gridlines(draw_labels=False, x_inline=False, rotate_labels=False, alpha=0.2)
         ax.add_feature(cfeature.STATES, edgecolor="black", linewidth=0.5)
         ax.add_feature(cfeature.BORDERS, edgecolor="black", linewidth=0.5)
         ax.set_extent([-120, -73, 22, 51], ccrs.Geodetic())
@@ -511,9 +496,7 @@ def plot_uc_maps(
 
     # Loop through metrics
     for idp, metric_id in enumerate(metric_ids):
-        axs = subfigs[idp].subplots(
-            1, 6, subplot_kw=dict(projection=ccrs.LambertConformal())
-        )
+        axs = subfigs[idp].subplots(1, 6, subplot_kw=dict(projection=ccrs.LambertConformal()))
         p = plot_uc_map(
             metric_id=metric_id,
             proj_slice=proj_slice,
@@ -548,6 +531,167 @@ def plot_uc_maps(
         fig.savefig(save_path, dpi=300, bbox_inches="tight")
 
 
+def plot_summary_stats(
+    metric_id,
+    proj_slice,
+    hist_slice,
+    plot_col,
+    return_period,
+    grid,
+    fit_method,
+    stationary,
+    stat_str,
+    time_str,
+    analysis_type,
+    quantile="mean",
+    regrid_method="nearest",
+    fig=None,
+    axs=None,
+    rel_metric_ids=[],
+    title="",
+    y_title=1.08,
+    filter_str="",
+):
+    # We can choose to normalize by a specific metric id
+    if metric_id in rel_metric_ids:
+        rel = True
+        rel_str = "_rel"
+    else:
+        rel = False
+        rel_str = ""
+    # Read
+    if analysis_type == "trends":
+        if metric_id == "sum_pr":
+            file_path = f"{project_data_path}/results/summary_{metric_id}{rel_str}_{proj_slice}_{hist_slice}_{plot_col}_{grid}grid_{regrid_method}.nc"
+        else:
+            file_path = f"{project_data_path}/results/summary_{metric_id}{rel_str}_{proj_slice}_{hist_slice}_{plot_col}_{grid}grid_{regrid_method}.nc"
+    elif analysis_type == "extreme_value":
+        if stationary:
+            if time_str is not None:
+                file_path = f"{project_data_path}/results/summary_{metric_id}_{proj_slice}_{hist_slice}_{return_period}yr_return_level_{time_str}_{fit_method}_{stat_str}_{grid}grid_{regrid_method}{filter_str}.nc"
+            else:
+                file_path = f"{project_data_path}/results/summary_{metric_id}_{proj_slice}_{hist_slice}_{return_period}yr_return_level_{fit_method}_{stat_str}_{grid}grid_{regrid_method}{filter_str}.nc"
+        else:
+            file_path = f"{project_data_path}/results/summary_{metric_id}_{proj_slice}_{return_period}yr_return_level_{time_str}_{fit_method}_{stat_str}_{grid}grid_{regrid_method}{filter_str}.nc"
+    elif analysis_type == "averages":
+        file_path = f"{project_data_path}/results/summary_{metric_id}_{proj_slice}_{hist_slice}_{grid}grid_{regrid_method}{filter_str}.nc"
+
+    ds = xr.open_dataset(file_path)
+
+    if axs is None:
+        fig, axs = plt.subplots(
+            1,
+            6,
+            figsize=(12, 4),
+            layout="constrained",
+            subplot_kw=dict(projection=ccrs.LambertConformal()),
+        )
+
+    # Plot details
+    if analysis_type == "trends":
+        if rel:
+            unit_labels = trend_labels_rel
+            ds[plot_col] = ds[plot_col] * 10 * 100  # decadal, pct trends
+        else:
+            unit_labels = trend_labels_abs
+            ds[plot_col] = ds[plot_col] * 10  # decadal, abs trends
+    elif analysis_type == "extreme_value":
+        if "chfc" in time_str:
+            unit_labels = rel_labels
+            ds[plot_col] = ds[plot_col] * 100  # pct changes
+        else:
+            unit_labels = gev_labels
+    else:
+        if rel:
+            unit_labels = rel_labels
+        else:
+            unit_labels = avg_labels
+
+    # Get vmin, vmax to format nicely for 11 levels
+    nlevels = 10
+    vmin = np.round(ds.sel(quantile=quantile)[plot_col].quantile(0.01).to_numpy(), decimals=0)
+    raw_range = ds.sel(quantile=quantile)[plot_col].quantile(0.95).to_numpy() - vmin
+    step_size = raw_range / nlevels
+    step_size = np.ceil(step_size * 2) / 2  # Round up to nearest 0.5
+    vmax = vmin + (step_size * nlevels)  # 10 steps total
+
+    # cmap for total uncertainty column
+    if metric_id in ["max_pr", "sum_pr"]:
+        cmap = "Blues"
+    else:
+        cmap = "Oranges"
+
+    # UC scale factor: change to pct if needed
+    if rel:
+        if analysis_type == "trends":
+            scale_factor = 100.0 * 10.0  # decadal, pct trends
+        else:
+            scale_factor = 100.0  # pct changes
+    else:
+        scale_factor = 1.0
+
+    # Loop through combos
+    combos = [
+        ("LOCA2", "ssp245"),
+        ("STAR-ESDM", "ssp245"),
+        ("LOCA2", "ssp370"),
+        ("GARD-LENS", "ssp370"),
+        ("LOCA2", "ssp585"),
+        ("STAR-ESDM", "ssp585"),
+    ]
+    for idx, combo in enumerate(combos):
+        ensemble, ssp = combo
+        da = ds.sel(quantile=quantile, ensemble=ensemble, ssp=ssp)[plot_col]
+        # Plot
+        ax = axs[idx]
+        p = (scale_factor * da).plot(
+            ax=ax,
+            levels=nlevels + 1,
+            add_colorbar=False,
+            vmin=vmin,
+            vmax=vmax,
+            cmap=cmap,
+            transform=ccrs.PlateCarree(),
+        )
+        # Tidy
+        ax.coastlines()
+        gl = ax.gridlines(draw_labels=False, x_inline=False, rotate_labels=False, alpha=0.2)
+        ax.add_feature(cfeature.STATES, edgecolor="black", linewidth=0.5)
+        ax.add_feature(cfeature.BORDERS, edgecolor="black", linewidth=0.5)
+        ax.set_extent([-120, -73, 22, 51], ccrs.Geodetic())
+        ax.set_title(f"{ensemble} {ssp_labels[ssp]}", fontsize=12)
+
+    # Cbar
+    if rel:
+        cbar_label = "Relative change [%]"
+    else:
+        cbar_label = f"Absolute change {unit_labels[metric_id]}"
+    fig.colorbar(
+        p,
+        orientation="vertical",
+        label=cbar_label,
+        ax=axs,
+        location="left",
+        shrink=0.6,
+        aspect=10,
+        pad=0.01,
+    )
+
+    if title is not None:
+        if title in ["", "a)", "b)", "c)", "d)", "e)"]:
+            fig.suptitle(
+                f"{title} {title_labels[metric_id]}",
+                style="italic",
+                y=y_title,
+                x=0.05,
+                ha="left",
+            )
+        else:
+            fig.suptitle(title, style="italic", y=y_title, x=0.05, ha="left")
+
+    return p
+
+
 #######################
 # City plot
 #######################
@@ -567,9 +711,7 @@ def plot_jagged_scatter(
         data = data[data["quantile"] == "main"]
 
     # Random offsets for y-axis
-    y_offsets = np.clip(
-        np.random.normal(loc=0.0, scale=jitter_amount, size=len(data)), -0.4, 0.4
-    )
+    y_offsets = np.clip(np.random.normal(loc=0.0, scale=jitter_amount, size=len(data)), -0.4, 0.4)
     y_values = [position + offset for offset in y_offsets]
 
     # Create jagged scatter plot
@@ -585,9 +727,7 @@ def plot_jagged_scatter(
     )
 
 
-def plot_conf_intvs(
-    df, plot_col, positions, color, ax, limits=None, lw=1.5, s=20, alpha=1
-):
+def plot_conf_intvs(df, plot_col, positions, color, ax, limits=None, lw=1.5, s=20, alpha=1):
     # Filter data below limits if desired
     if limits is not None:
         data = df[(df[plot_col] < limits[1]) & (df[plot_col] > limits[0])]
@@ -616,9 +756,8 @@ def plot_conf_intvs(
         alpha=alpha,
     )
 
-    # Transform samples into quantile if needed
 
-
+# Transform samples into quantile if needed
 def transform_samples_to_quantile(df):
     """
     Transforms the raw samples into quantiles. This is the 'true' form which
@@ -631,9 +770,7 @@ def transform_samples_to_quantile(df):
         .reset_index()
         .rename(columns={"index": "quantile"})
     )
-    df_quantiles["quantile"] = df_quantiles["quantile"].map(
-        {0.025: "q025", 0.975: "q975"}
-    )
+    df_quantiles["quantile"] = df_quantiles["quantile"].map({0.025: "q025", 0.975: "q975"})
     # Get overall mean
     df_mean = pd.DataFrame(df.mean(numeric_only=True)).T
     df_mean["quantile"] = "main"
@@ -646,13 +783,9 @@ def aggregate_quantiles(df):
     which takes the upper and lower pre-computed quantiles.
     Note this only works for one GCM/SSP combination.
     """
-    df_lower = pd.DataFrame(
-        df[df["quantile"] == "q025"].quantile(0.005, numeric_only=True)
-    ).T
+    df_lower = pd.DataFrame(df[df["quantile"] == "q025"].quantile(0.005, numeric_only=True)).T
     df_lower["quantile"] = "q025"
-    df_upper = pd.DataFrame(
-        df[df["quantile"] == "q975"].quantile(0.995, numeric_only=True)
-    ).T
+    df_upper = pd.DataFrame(df[df["quantile"] == "q975"].quantile(0.995, numeric_only=True)).T
     df_upper["quantile"] = "q975"
     df_quantiles = pd.concat([df_lower, df_upper], ignore_index=True)
 
@@ -715,9 +848,7 @@ def plot_city_results(
 
     # Fix negation for min_tasmin, non-stationry models
     if metric_id == "min_tasmin" and not stationary:
-        df.loc[df["n_boot"] != "main", plot_col] = -df.loc[
-            df["n_boot"] != "main", plot_col
-        ]
+        df.loc[df["n_boot"] != "main", plot_col] = -df.loc[df["n_boot"] != "main", plot_col]
 
     df_uc = sacu.calculate_df_uc(df, plot_col)
     df = df.set_index(["ensemble", "gcm", "member", "ssp"])
@@ -726,9 +857,7 @@ def plot_city_results(
 
     # Make figure if needed
     if axs is None:
-        fig, axs = plt.subplots(
-            2, 1, figsize=(5, 11), height_ratios=[5, 1], layout="constrained"
-        )
+        fig, axs = plt.subplots(2, 1, figsize=(5, 11), height_ratios=[5, 1], layout="constrained")
 
     if title is None:
         axs[0].set_title(title_labels[metric_id])
@@ -841,9 +970,7 @@ def plot_city_results(
             lw=3,
             limits=limits,
         )
-        plot_jagged_scatter(
-            df_sel, plot_col, [idy], ssp_colors["ssp370"], ax, limits=limits
-        )
+        plot_jagged_scatter(df_sel, plot_col, [idy], ssp_colors["ssp370"], ax, limits=limits)
         label_names.append(f"{gcm} ({df_sel.index.nunique()})")
         label_idy.append(idy)
         idy += 1
@@ -971,11 +1098,7 @@ def plot_city_results(
 
     # Get xlabel
     xlabel_str = (
-        "Change in"
-        if "diff" in plot_col
-        else "Change factor:"
-        if "chfc" in plot_col
-        else ""
+        "Change in" if "diff" in plot_col else "Change factor:" if "chfc" in plot_col else ""
     )
     return_level_str = plot_col.split("yr")[0]
     ax.set_xlabel(f"{xlabel_str} {return_level_str}-year return level{unit_str}")
@@ -1100,9 +1223,7 @@ def plot_uc_rls(
                 file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{return_period}yr_return_level_{time_str}_{fit_method}_{stat_str}_{grid}grid_{regrid_method}.nc"
             else:
                 file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{return_period}yr_return_level_{time_str}_{fit_method}_{stat_str}_{grid}grid_{regrid_method}.nc"
-            ds.append(
-                xr.open_dataset(file_path).assign_coords(return_period=return_period)
-            )
+            ds.append(xr.open_dataset(file_path).assign_coords(return_period=return_period))
         ds = xr.concat(ds, dim="return_period", coords="minimal")
 
         # Mask out locations without all three ensembles
@@ -1114,9 +1235,7 @@ def plot_uc_rls(
             df = ds.mean(dim=["lat", "lon"]).to_dataframe().droplevel("quantile")
         else:
             df = (
-                ds.sel(
-                    lat=coord_or_mean[0], lon=360 + coord_or_mean[1], method="nearest"
-                )
+                ds.sel(lat=coord_or_mean[0], lon=360 + coord_or_mean[1], method="nearest")
                 .to_dataframe()
                 .droplevel("quantile")
             )
@@ -1126,9 +1245,7 @@ def plot_uc_rls(
         ax1 = axs[idm].twinx()
         # ax1.plot(df.index, df_total_uc, lw=2, color="black", alpha=0.5)
         ax1.scatter(df.index, df_total_uc, s=50, marker="X", color="black", alpha=0.8)
-        ax1.set_ylabel(
-            f"Total uncertainty {gev_labels[metric_id]}", rotation=-90, va="bottom"
-        )
+        ax1.set_ylabel(f"Total uncertainty {gev_labels[metric_id]}", rotation=-90, va="bottom")
 
         # Plot UC components on top with higher alpha
         ax = axs[idm]
@@ -1159,9 +1276,7 @@ def plot_uc_rls(
             # .replace("minimum", "minimum\n")
             # .replace("maximum", "maximum\n")
         )
-        ax.set_title(
-            f"{subfigure_labels[idm + idm_start]} {title_str}", fontstyle="italic"
-        )
+        ax.set_title(f"{subfigure_labels[idm + idm_start]} {title_str}", fontstyle="italic")
         ax.set_xlabel("Return period")
         ax.set_xticklabels(return_periods)
 

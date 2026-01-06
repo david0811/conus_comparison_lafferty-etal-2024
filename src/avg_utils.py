@@ -27,6 +27,9 @@ def avg_calc_single(
     """
     Read a single metric file and calculate the average.
     """
+    if proj_years is None and hist_years is None:
+        return None
+    
     try:
         # Check if done
         proj_name = (
@@ -73,8 +76,6 @@ def avg_calc_single(
             ds_proj = ds.sel(time=slice(proj_years[0], proj_years[1]))
         if hist_years is not None:
             ds_hist = ds.sel(time=slice(hist_years[0], hist_years[1]))
-        else:
-            raise ValueError("Years are required")
 
         # Check length is as expected
         if proj_years is not None:
@@ -92,13 +93,16 @@ def avg_calc_single(
         if hist_years is not None:
             ds_hist_out = ds_hist.mean(dim="time")
 
-        if hist_years is not None:
-            if proj_years is not None:
-                ds_out = ds_proj_out - ds_hist_out
-            else:
-                ds_out = ds_hist_out
-        else:
+        # Combine outputs based on what was calculated
+        if proj_years is not None and hist_years is not None:
+            # Both periods: calculate difference
+            ds_out = ds_proj_out - ds_hist_out
+        elif proj_years is not None:
+            # Only projection period
             ds_out = ds_proj_out
+        elif hist_years is not None:
+            # Only historical period
+            ds_out = ds_hist_out
 
         ## Store
         # Update GARD GCMs
