@@ -1,7 +1,10 @@
+import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 from matplotlib.lines import Line2D
-import plotting_utils as pu
 
+import plotting_utils as pu
+from utils import roar_code_path as project_code_path
 from utils import roar_data_path as project_data_path
 
 
@@ -383,7 +386,7 @@ def plot_gev_uncertainty(
     xtext=0.99,
     ytext=0.02,
     include_stat_fit=True,
-    anomaly_baseline=0.0
+    anomaly_baseline=0.0,
 ):
     var_id = metric_id.split("_")[1]
     df_sel = df[
@@ -395,7 +398,7 @@ def plot_gev_uncertainty(
     ssp_name = pu.ssp_labels[ssp]
 
     # Read RLs
-    stat_n_boot = 1000
+    stat_n_boot = 100
     nonstat_n_boot = 100
     sample_str = "_samples"
     stat_fit_method = "lmom"
@@ -403,6 +406,7 @@ def plot_gev_uncertainty(
     proj_slice = "2050-2100"
     hist_slice = "1950-2014"
     nonstat_slice = "1950-2100"
+    nonstat_str = "nonstat_scale"
 
     # Read both fits
     df_stat = pd.read_csv(
@@ -416,7 +420,7 @@ def plot_gev_uncertainty(
     ]
 
     df_nonstat = pd.read_csv(
-        f"{project_data_path}/extreme_value/cities/original_grid/freq/{city}_{metric_id}_{nonstat_slice}_{nonstat_fit_method}_nonstat_nboot{nonstat_n_boot}{sample_str}_scale.csv"
+        f"{project_data_path}/extreme_value/cities/original_grid/freq/{city}_{metric_id}_{nonstat_slice}_{nonstat_fit_method}_{nonstat_str}_nboot{nonstat_n_boot}{sample_str}.csv"
     )
     df_nonstat_sel = df_nonstat[
         (df_nonstat["gcm"] == gcm)
@@ -434,7 +438,7 @@ def plot_gev_uncertainty(
         ax.fill_between(
             x=[2050, 2100],
             y1=[df_stat_sel[f"{col_name}_proj"].quantile(0.975) - anomaly_baseline],
-            y2=[df_stat_sel[f"{col_name}_proj"].quantile(0.025) -  anomaly_baseline],
+            y2=[df_stat_sel[f"{col_name}_proj"].quantile(0.025) - anomaly_baseline],
             color="violet",
             alpha=0.5,
         )
@@ -462,7 +466,10 @@ def plot_gev_uncertainty(
     years = [1950, 1975, 2000, 2050, 2075, 2100]
     ax.plot(
         years,
-        df_nonstat_sel_main[[f"{col_name}_{year}" for year in years]].to_numpy().flatten() - anomaly_baseline,
+        df_nonstat_sel_main[[f"{col_name}_{year}" for year in years]]
+        .to_numpy()
+        .flatten()
+        - anomaly_baseline,
         color="indigo",
         ls="dotted",
         label="Non-stationary (1950-2100)",
@@ -470,8 +477,10 @@ def plot_gev_uncertainty(
 
     ax.fill_between(
         x=years,
-        y1=df_nonstat_sel[[f"{col_name}_{year}" for year in years]].quantile(0.975) - anomaly_baseline,
-        y2=df_nonstat_sel[[f"{col_name}_{year}" for year in years]].quantile(0.025) - anomaly_baseline,
+        y1=df_nonstat_sel[[f"{col_name}_{year}" for year in years]].quantile(0.975)
+        - anomaly_baseline,
+        y2=df_nonstat_sel[[f"{col_name}_{year}" for year in years]].quantile(0.025)
+        - anomaly_baseline,
         color="indigo",
         alpha=0.5,
     )
@@ -508,3 +517,118 @@ def plot_gev_uncertainty(
 
     # Apply the UC and return for second plot
     return df_stat, df_nonstat
+
+
+def make_figure(
+    city,
+    metric_id,
+    plot_anomalies=True,
+    save_fig=True,
+):
+    # Read timeseries
+    var_id = metric_id.split("_")[1]
+    unit = pu.gev_labels[metric_id]
+
+    # Read raw
+    df = pd.read_csv(f"{project_data_path}/metrics/cities/{city}_{metric_id}.csv")
+
+    # Drop TaiESM1: outputs recalled
+    df = df[df["gcm"] != "TaiESM1"]
+
+    # Filter TGW
+    df = df[df["ensemble"] != "TGW"]
+
+    # Filter unrealistic values
+    df = df[df["tasmax"] < 50.0].copy()
+
+    if plot_anomalies:
+        ## Get anomaly from 1980-2010
+        # LOCA separate since it distinguishes SSPs from historical
+        df_baseline_loca = (
+            df[(df["ensemble"] == "LOCA2") & (df["ssp"] == "historical")]
+            .query("time >= 1980 and time <= 2010")
+            .groupby(["gcm", "member"])[[var_id]]
+            .mean(numeric_only=True)
+            .reset_index()
+        )
+        df_loca = pd.merge(
+            df[df["ensemble"] == "LOCA2"],
+            df_baseline_loca,
+            on=["gcm", "member"],
+            how="left",
+            suffixes=("", "_baseline"),
+        )
+        df_loca[var_id] = df_loca[var_id] - df_loca[f"{var_id}_baseline"]
+
+        # Non-LOCA
+        df_baseline_nonloca = (
+            df[df["ensemble"] != "LOCA2"]
+            .query("time >= 1980 and time <= 2010")
+            .groupby(["gcm", "member", "ssp", "ensemble"])[[var_id]]
+            .mean(numeric_only=True)
+            .reset_index()
+        )
+        df_nonloca = pd.merge(
+            df[df["ensemble"] != "LOCA2"],
+            df_baseline_nonloca,
+            on=["gcm", "member", "ssp", "ensemble"],
+            how="left",
+            suffixes=("", "_baseline"),
+        )
+        df_nonloca[var_id] = df_nonloca[var_id] - df_nonloca[f"{var_id}_baseline"]
+
+        # Concat
+        df_plot = pd.concat([df_loca, df_nonloca], ignore_index=True).dropna()
+    else:
+        df_plot = df.copy()
+
+    ## Make plot
+    plt.rcParams["font.size"] = 10
+
+    fig, axs = plt.subplots(
+        3,
+        2,
+        figsize=(9, 10),
+        layout="constrained",
+        gridspec_kw={"hspace": 0.075, "wspace": 0.01},
+    )
+
+    plot_total_uncertainty(df_plot, metric_id, unit, axs[0, 0])
+    plot_scenario_uncertainty(df_plot, metric_id, unit, axs[0, 1])
+    plot_response_uncertainty(df_plot, metric_id, unit, axs[1, 0])
+    plot_internal_variability(df_plot, metric_id, unit, axs[1, 1])
+    plot_downscaling_uncertainty(df_plot, metric_id, unit, axs[2, 0], member="r4i1p1f1")
+
+    baseline = df[
+        (df["ensemble"] == "STAR-ESDM")
+        & (df["ssp"] == "ssp585")
+        & (df["gcm"] == "CanESM5")
+        & (df["member"] == "r1i1p1f1")
+        & df["time"].isin(np.arange(1980, 2010 + 1))
+    ][var_id].mean()
+    _ = plot_gev_uncertainty(
+        df_plot,
+        metric_id,
+        unit,
+        axs[2, 1],
+        city=city,
+        ensemble="STAR-ESDM",
+        ssp="ssp585",
+        gcm="CanESM5",
+        member="r1i1p1f1",
+        anomaly_baseline=baseline,
+    )
+
+    fig.suptitle(
+        f"Examples of uncertainty sources: change in annual maximum temperature in {pu.city_names[city]}",
+        fontweight="bold",
+        fontsize=14,
+        y=1.03,
+    )
+
+    if save_fig:
+        plt.savefig(
+            f"{project_code_path}/figs/figure1.png", dpi=600, bbox_inches="tight"
+        )
+    else:
+        plt.show()

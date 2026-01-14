@@ -103,7 +103,8 @@ def read_loca(
                 ds_loca_hist = xr.combine_by_coords(
                     [
                         _preprocess_func(xr.open_dataset(file)[cols_to_keep])
-                        for file in loca_hist_files if 'obs' not in file
+                        for file in loca_hist_files
+                        if "obs" not in file
                     ]
                 )
                 ds_loca = xr.concat([ds_loca, ds_loca_hist], dim="ssp")
@@ -888,7 +889,7 @@ def summary_stats_main(
     filter_vals=None,
 ):
     """
-    Calculates summary statistics (mean, median, etc) on the main fit results 
+    Calculates summary statistics (mean, median, etc) on the main fit results
     (not accounting for bootstrap).
     """
     # Read all: main
@@ -910,11 +911,11 @@ def summary_stats_main(
 
     # Here we drop the quantile dimension
     if "quantile" in ds_star.dims:
-        ds_star = ds_star.sel(quantile='main').drop_vars('quantile')
+        ds_star = ds_star.sel(quantile="main").drop_vars("quantile")
     if "quantile" in ds_gard.dims:
-        ds_gard = ds_gard.sel(quantile='main').drop_vars('quantile')
+        ds_gard = ds_gard.sel(quantile="main").drop_vars("quantile")
     if "quantile" in ds_loca.dims:
-        ds_loca = ds_loca.sel(quantile='main').drop_vars('quantile')
+        ds_loca = ds_loca.sel(quantile="main").drop_vars("quantile")
 
     # Filter values if desired
     if filter_vals is not None:
@@ -942,23 +943,54 @@ def summary_stats_main(
 
     return xr.concat(
         [
-            xr.concat([
-                ds_loca.mean(dim=["gcm", "member"]).assign_coords(quantile = 'mean'),
-                ds_loca.median(dim=["gcm", "member"]).assign_coords(quantile = 'median'),
-                ds_loca.quantile(0.01, dim=['gcm', 'member']).assign_coords(quantile = 'q01'),
-                ds_loca.quantile(0.99, dim=['gcm', 'member']).assign_coords(quantile = 'q99'),
-            ], dim='quantile', coords='minimal'),
-            xr.concat([
-                ds_gard.mean(dim=["gcm", "member"]).assign_coords(quantile = 'mean'),
-                ds_gard.median(dim=["gcm", "member"]).assign_coords(quantile = 'median'),
-                ds_gard.quantile(0.01, dim=['gcm', 'member']).assign_coords(quantile = 'q01'),
-                ds_gard.quantile(0.99, dim=['gcm', 'member']).assign_coords(quantile = 'q99'),
-            ], dim='quantile', coords='minimal'),
-            xr.concat([
-                ds_star.mean(dim=["gcm", "member"]).assign_coords(quantile = 'mean'),
-                ds_star.median(dim=["gcm", "member"]).assign_coords(quantile = 'median'),
-                ds_star.quantile(0.01, dim=['gcm', 'member']).assign_coords(quantile = 'q01'),
-                ds_star.quantile(0.99, dim=['gcm', 'member']).assign_coords(quantile = 'q99'),
-            ], dim='quantile', coords='minimal'),
-        ], dim='ensemble'
+            xr.concat(
+                [
+                    ds_loca.mean(dim=["gcm", "member"]).assign_coords(quantile="mean"),
+                    ds_loca.median(dim=["gcm", "member"]).assign_coords(
+                        quantile="median"
+                    ),
+                    ds_loca.quantile(0.01, dim=["gcm", "member"]).assign_coords(
+                        quantile="q01"
+                    ),
+                    ds_loca.quantile(0.99, dim=["gcm", "member"]).assign_coords(
+                        quantile="q99"
+                    ),
+                ],
+                dim="quantile",
+                coords="minimal",
+            ),
+            xr.concat(
+                [
+                    ds_gard.mean(dim=["gcm", "member"]).assign_coords(quantile="mean"),
+                    ds_gard.median(dim=["gcm", "member"]).assign_coords(
+                        quantile="median"
+                    ),
+                    ds_gard.quantile(0.01, dim=["gcm", "member"]).assign_coords(
+                        quantile="q01"
+                    ),
+                    ds_gard.quantile(0.99, dim=["gcm", "member"]).assign_coords(
+                        quantile="q99"
+                    ),
+                ],
+                dim="quantile",
+                coords="minimal",
+            ),
+            xr.concat(
+                [
+                    ds_star.mean(dim=["gcm", "member"]).assign_coords(quantile="mean"),
+                    ds_star.median(dim=["gcm", "member"]).assign_coords(
+                        quantile="median"
+                    ),
+                    ds_star.quantile(0.01, dim=["gcm", "member"]).assign_coords(
+                        quantile="q01"
+                    ),
+                    ds_star.quantile(0.99, dim=["gcm", "member"]).assign_coords(
+                        quantile="q99"
+                    ),
+                ],
+                dim="quantile",
+                coords="minimal",
+            ),
+        ],
+        dim="ensemble",
     )

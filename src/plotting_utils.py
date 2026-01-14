@@ -1,6 +1,7 @@
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 import matplotlib.transforms as transforms
 import numpy as np
 import pandas as pd
@@ -27,11 +28,11 @@ ssp_labels = {
     "ssp585": "SSP5-8.5",
 }
 gev_labels = {
-    "max_tasmax": "[C]",
+    "max_tasmax": "[°C]",
     "max_cdd": "[degree days]",
     "max_hdd": "[degree days]",
     "max_pr": "[mm]",
-    "min_tasmin": "[C]",
+    "min_tasmin": "[°C]",
 }
 rel_labels = {
     "avg_tas": "[%]",
@@ -47,31 +48,31 @@ rel_labels = {
     "min_tasmin": "[%]",
 }
 norm_labels = {
-    "uc_99w": "99% range",
-    "uc_99w_main": "99% range",
-    "uc_95w_main": "95% range",
-    "uc_range_main": "Total range",
+    "uc_99w": r"99% range",
+    "uc_99w_main": r"99% range",
+    "uc_95w_main": r"95% range",
+    "uc_range_main": r"Total range",
 }
 trend_labels_abs = {
-    "avg_tas": "\n[C/decade]",
-    "avg_tasmin": "\n[C/decade]",
-    "avg_tasmax": "\n[C/decade]",
-    "sum_pr": "\n[mm/decade]",
-    "sum_cdd": "\n[degree days/decade]",
-    "sum_hdd": "\n[degree days/decade]",
+    "avg_tas": "[°C/decade]",
+    "avg_tasmin": "[°C/decade]",
+    "avg_tasmax": "[°C/decade]",
+    "sum_pr": "[mm/decade]",
+    "sum_cdd": "[degree days/decade]",
+    "sum_hdd": "[degree days/decade]",
 }
 trend_labels_rel = {
-    "avg_tas": "\n[%/decade]",
-    "avg_tasmin": "\n[%/decade]",
-    "avg_tasmax": "\n[%/decade]",
-    "sum_pr": "\n[%/decade]",
-    "sum_cdd": "\n[%/decade]",
-    "sum_hdd": "\n[%/decade]",
+    "avg_tas": "[%/decade]",
+    "avg_tasmin": "[%/decade]",
+    "avg_tasmax": "[%/decade]",
+    "sum_pr": "[%/decade]",
+    "sum_cdd": "[%/decade]",
+    "sum_hdd": "[%/decade]",
 }
 avg_labels = {
-    "avg_tas": "[C]",
-    "avg_tasmin": "[C]",
-    "avg_tasmax": "[C]",
+    "avg_tas": "[°C]",
+    "avg_tasmin": "[°C]",
+    "avg_tasmax": "[°C]",
     "sum_pr": "[mm]",
     "sum_cdd": "[degree days]",
     "sum_hdd": "[degree days]",
@@ -94,7 +95,7 @@ city_names = {
     "seattle": "Seattle",
     "houston": "Houston",
     "denver": "Denver",
-    "nyc": "New York City",
+    "nyc": "New York",
     "sanfrancisco": "San Francisco",
     "boston": "Boston",
     "nashville": "Nashville",
@@ -122,6 +123,59 @@ uc_markers = {
 }
 
 subfigure_labels = ["a)", "b)", "c)", "d)", "e)", "f)", "g)", "h)", "i)"]
+subplot_labels = ["i)", "ii)", "iii)", "iv)", "v)", "vi)"]
+
+
+def tidy_ax(ax):
+    ax.coastlines()
+    gl = ax.gridlines(draw_labels=False, x_inline=False, rotate_labels=False, alpha=0.2)
+    ax.add_feature(cfeature.STATES, edgecolor="black", linewidth=0.5)
+    ax.add_feature(cfeature.BORDERS, edgecolor="black", linewidth=0.5)
+    ax.set_extent([-120, -73, 22, 51], ccrs.Geodetic())
+
+
+def get_vmin_vmax(da, metric_id, analysis_type, quantile, rel):
+    """
+    Calculate vmin and vmax for colorbar with nicely formatted tick labels.
+
+    Parameters
+    ----------
+    decimal_places : int, default=0
+        Number of decimal places for tick labels (0 for integers, 1 for one decimal)
+    """
+    # Determine rounding precision
+    if metric_id in ["sum_pr", "max_pr"]:
+        decimal_places = 0
+    else:
+        decimal_places = 1
+
+    round_factor = 10**decimal_places
+
+    vmin = np.round(da.quantile(0.05).to_numpy(), decimals=decimal_places)
+    vmax = np.round(da.quantile(0.95).to_numpy(), decimals=decimal_places)
+
+    # If not odd range, adjust
+    range_raw = vmax - vmin
+    if range_raw % 2 == 0:
+        vmax += 1 / round_factor
+
+    if vmin < 0:
+        vmin = -vmax
+
+    # if vmin > 0:
+    #     raw_range = da.quantile(0.95).to_numpy() - vmin
+    #     step_size = raw_range / nlevels
+
+    #     # Round step size up to desired precision
+    #     step_size = np.ceil(step_size * round_factor) / round_factor
+    #     vmax = vmin + (step_size * nlevels)
+    # else:
+    #     vmax_raw = da.quantile(0.95).to_numpy()
+    #     # Round up to nearest multiple at desired precision
+    #     vmax = np.ceil(vmax_raw * round_factor / nlevels) * nlevels / round_factor
+    #     vmin = -vmax
+
+    return vmin, vmax
 
 
 ##################
@@ -145,11 +199,13 @@ def plot_uc_map(
     axs=None,
     norm="uc_99w_main",
     total_uc_col="uc_99w_main",
+    plot_total_uc=True,
     rel_metric_ids=[],
     cbar=False,
     vmax_uc=40,
     title="",
     y_title=0.98,
+    x_title=0.05,
     filter_str="",
 ):
     """
@@ -316,8 +372,8 @@ def plot_uc_map(
         uc["fit_uc"] = uc["fit_uc"] / uc[norm]
 
     if axs is None:
-        ncols = 5 if analysis_type == "averages" else 6
-        width = 11 if analysis_type == "averages" else 14
+        ncols = 4 if analysis_type == "averages" else 6
+        width = 10 if analysis_type == "averages" else 14
         fig, axs = plt.subplots(
             1,
             ncols,
@@ -325,6 +381,8 @@ def plot_uc_map(
             layout="constrained",
             subplot_kw=dict(projection=ccrs.LambertConformal()),
         )
+    if plot_total_uc:
+        ncols += 1
 
     # Plot details
     if analysis_type == "trends":
@@ -362,12 +420,6 @@ def plot_uc_map(
         step_size = np.ceil(step_size * 2) / 2  # Round up to nearest 0.5
         vmax = vmin + (step_size * nlevels)  # 10 steps total
 
-    # cmap for total uncertainty column
-    if metric_id in ["max_pr", "sum_pr"]:
-        cmap = "Blues"
-    else:
-        cmap = "Oranges"
-
     # UC scale factor: change to pct if needed
     if rel:
         if analysis_type == "trends" and norm is None:
@@ -380,36 +432,42 @@ def plot_uc_map(
         scale_factor = 1.0
 
     # First plot total uncertainty
-    ax = axs[0]
-    p = uc[total_uc_col].plot(
-        ax=ax,
-        levels=nlevels + 1,
-        add_colorbar=True,
-        vmin=vmin,
-        vmax=vmax,
-        cmap=cmap,
-        transform=ccrs.PlateCarree(),
-        cbar_kwargs={
-            "orientation": "vertical",
-            "location": "left",
-            "shrink": 0.6,
-            "aspect": 10,
-            "label": f"{norm_labels[total_uc_col]} {unit_labels[metric_id]}",
-        },
-    )
-    # Tidy
-    ax.coastlines()
-    gl = ax.gridlines(draw_labels=False, x_inline=False, rotate_labels=False, alpha=0.2)
-    ax.add_feature(cfeature.STATES, edgecolor="black", linewidth=0.5)
-    ax.add_feature(cfeature.BORDERS, edgecolor="black", linewidth=0.5)
-    ax.set_extent([-120, -73, 22, 51], ccrs.Geodetic())
-    ax.set_title("Total uncertainty", fontsize=12)
+    if plot_total_uc:
+        ax = axs[0]
+        p = uc[total_uc_col].plot(
+            ax=ax,
+            levels=nlevels + 1,
+            add_colorbar=True,
+            vmin=vmin,
+            vmax=vmax,
+            cmap="PuRd",
+            transform=ccrs.PlateCarree(),
+            cbar_kwargs={
+                "orientation": "vertical",
+                "location": "left",
+                "shrink": 0.6,
+                "aspect": 10,
+                "label": f"{norm_labels[total_uc_col]} {unit_labels[metric_id]}",
+            },
+        )
+        # Tidy
+        ax.coastlines()
+        gl = ax.gridlines(
+            draw_labels=False, x_inline=False, rotate_labels=False, alpha=0.2
+        )
+        ax.add_feature(cfeature.STATES, edgecolor="black", linewidth=0.5)
+        ax.add_feature(cfeature.BORDERS, edgecolor="black", linewidth=0.5)
+        ax.set_extent([-120, -73, 22, 51], ccrs.Geodetic())
+        ax.set_title("Total uncertainty", fontsize=12)
+        axi_start = 1
+    else:
+        axi_start = 0
 
     # Loop through uncertainties
     for axi, uc_type in enumerate(list(uc_labels.keys())):
         if not plot_fit_uc and uc_type == "fit_uc":
             continue
-        ax = axs[axi + 1]
+        ax = axs[axi + axi_start]
         p = (scale_factor * uc[uc_type]).plot(
             ax=ax,
             levels=nlevels + 1,
@@ -422,7 +480,9 @@ def plot_uc_map(
 
         # Tidy
         ax.coastlines()
-        gl = ax.gridlines(draw_labels=False, x_inline=False, rotate_labels=False, alpha=0.2)
+        gl = ax.gridlines(
+            draw_labels=False, x_inline=False, rotate_labels=False, alpha=0.2
+        )
         ax.add_feature(cfeature.STATES, edgecolor="black", linewidth=0.5)
         ax.add_feature(cfeature.BORDERS, edgecolor="black", linewidth=0.5)
         ax.set_extent([-120, -73, 22, 51], ccrs.Geodetic())
@@ -441,28 +501,41 @@ def plot_uc_map(
             p,
             orientation="horizontal",
             label=cbar_label,
-            ax=axs[1:],
+            ax=axs[axi_start:],
             pad=0.05,
             shrink=0.3,
         )
 
     if title is not None:
-        if title in ["", "a)", "b)", "c)", "d)", "e)"]:
+        if title in [
+            "",
+            "a)",
+            "b)",
+            "c)",
+            "d)",
+            "e)",
+            "i)",
+            "ii)",
+            "iii)",
+            "iv)",
+            "v)",
+            "vi)",
+        ]:
             fig.suptitle(
                 f"{title} {title_labels[metric_id]}",
                 style="italic",
                 y=y_title,
-                x=0.05,
+                x=x_title,
                 ha="left",
             )
         else:
-            fig.suptitle(title, style="italic", y=y_title, x=0.05, ha="left")
+            fig.suptitle(title, style="italic", y=y_title, x=x_title, ha="left")
 
     return p
 
 
-def plot_uc_maps(
-    metric_ids,
+def plot_ensemble_mean_uncertainty(
+    plot_metric_ids,
     proj_slice,
     hist_slice,
     plot_col,
@@ -473,65 +546,186 @@ def plot_uc_maps(
     stat_str,
     time_str,
     analysis_type,
-    suptitle=None,
-    plot_fit_uc=False,
+    quantile="mean",
+    total_uc_col="uc_99w_main",
     regrid_method="nearest",
-    norm="uc_99w_main",
-    vmax_uc=40,
+    fig=None,
+    rel_metric_ids=[],
     y_title=1.08,
-    y_suptitle=1.07,
-    save_path=None,
+    filter_str="",
 ):
+    # Get mask
+    mask = xr.open_dataset(f"{project_data_path}/mask.nc")["mask"]
+
     # Set up figure
-    if plot_fit_uc:
-        figsize = (12, 5.5)
+    if fig is None:
+        fig = plt.figure(
+            figsize=(len(plot_metric_ids) * 4, 2.5),
+            layout="constrained",
+        )
+    # Set up subfigs
+    if len(plot_metric_ids) == 2:
+        subfigs = fig.subfigures(1, 4, width_ratios=[0.2, 1, 1, 0.2])
+        idm_start = 1
     else:
-        figsize = (10, 5.5)
+        subfigs = fig.subfigures(1, len(plot_metric_ids))
+        idm_start = 0
 
-    fig = plt.figure(figsize=figsize, layout="constrained")
-    subfigs = fig.subfigures(3, 1, hspace=0.01)
+    for idm, metric_id in enumerate(plot_metric_ids):
+        axs = subfigs[idm + idm_start].subplots(
+            1, 2, subplot_kw=dict(projection=ccrs.LambertConformal())
+        )
+        # We can choose to normalize by a specific metric id
+        if metric_id in rel_metric_ids:
+            rel = True
+            rel_str = "_rel"
+        else:
+            rel = False
+            rel_str = ""
+        # Read
+        if analysis_type == "trends":
+            if metric_id == "sum_pr":
+                mean_file_path = f"{project_data_path}/results/summary_{metric_id}{rel_str}_{proj_slice}_{hist_slice}_{plot_col}_{grid}grid_{regrid_method}.nc"
+                uc_file_path = f"{project_data_path}/results/{metric_id}{rel_str}_{proj_slice}_{hist_slice}_{plot_col}_{grid}grid_{regrid_method}.nc"
+            else:
+                mean_file_path = f"{project_data_path}/results/summary_{metric_id}{rel_str}_{proj_slice}_{hist_slice}_{plot_col}_{grid}grid_{regrid_method}.nc"
+                uc_file_path = f"{project_data_path}/results/{metric_id}{rel_str}_{proj_slice}_{hist_slice}_{plot_col}_{grid}grid_{regrid_method}.nc"
+        elif analysis_type == "extreme_value":
+            if stationary:
+                if time_str is not None:
+                    mean_file_path = f"{project_data_path}/results/summary_{metric_id}_{proj_slice}_{hist_slice}_{return_period}yr_return_level_{time_str}_{fit_method}_{stat_str}_{grid}grid_{regrid_method}{filter_str}.nc"
+                    uc_file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{return_period}yr_return_level_{time_str}_{fit_method}_{stat_str}_{grid}grid_{regrid_method}{filter_str}.nc"
+                else:
+                    mean_file_path = f"{project_data_path}/results/summary_{metric_id}_{proj_slice}_{hist_slice}_{return_period}yr_return_level_{fit_method}_{stat_str}_{grid}grid_{regrid_method}{filter_str}.nc"
+                    uc_file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{return_period}yr_return_level_{fit_method}_{stat_str}_{grid}grid_{regrid_method}{filter_str}.nc"
+            else:
+                mean_file_path = f"{project_data_path}/results/summary_{metric_id}_{proj_slice}_{return_period}yr_return_level_{time_str}_{fit_method}_{stat_str}_{grid}grid_{regrid_method}{filter_str}.nc"
+                uc_file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{return_period}yr_return_level_{time_str}_{fit_method}_{stat_str}_{grid}grid_{regrid_method}{filter_str}.nc"
+        elif analysis_type == "averages":
+            mean_file_path = f"{project_data_path}/results/summary_{metric_id}_{proj_slice}_{hist_slice}_{grid}grid_{regrid_method}{filter_str}.nc"
+            uc_file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{grid}grid_{regrid_method}{filter_str}.nc"
 
-    if suptitle is not None:
-        fig.suptitle(suptitle, fontweight="bold", y=y_suptitle)
+        ds_mean = xr.open_dataset(mean_file_path)
+        ds_uc = xr.open_dataset(uc_file_path)
 
-    # Loop through metrics
-    for idp, metric_id in enumerate(metric_ids):
-        axs = subfigs[idp].subplots(1, 6, subplot_kw=dict(projection=ccrs.LambertConformal()))
-        p = plot_uc_map(
-            metric_id=metric_id,
-            proj_slice=proj_slice,
-            hist_slice=hist_slice,
-            plot_col=plot_col,
-            return_period=return_period,
-            grid=grid,
-            fit_method=fit_method,
-            stationary=stationary,
-            stat_str=stat_str,
-            time_str=time_str,
-            analysis_type=analysis_type,
-            vmax_uc=vmax_uc,
-            y_title=y_title,
-            fig=subfigs[idp],
-            axs=axs,
-            plot_fit_uc=plot_fit_uc,
-            title=subfigure_labels[idp],
+        # Plot details
+        if analysis_type == "trends":
+            if rel:
+                unit_labels = trend_labels_rel
+                ds_mean[plot_col] = ds_mean[plot_col] * 10 * 100  # decadal, pct trends
+                ds_uc[total_uc_col] = (
+                    ds_uc[total_uc_col] * 10 * 100
+                )  # decadal, pct trends
+            else:
+                unit_labels = trend_labels_abs
+                ds_mean[plot_col] = ds_mean[plot_col] * 10  # decadal, abs trends
+                ds_uc[total_uc_col] = ds_uc[total_uc_col] * 10  # decadal, abs trends
+        elif analysis_type == "extreme_value":
+            if "chfc" in time_str:
+                unit_labels = rel_labels
+                ds_mean[plot_col] = ds_mean[plot_col] * 100  # pct changes
+                ds_uc[total_uc_col] = ds_uc[total_uc_col] * 100  # pct changes
+            else:
+                unit_labels = gev_labels
+        else:
+            if rel:
+                unit_labels = rel_labels
+            else:
+                unit_labels = avg_labels
+
+        ## Plot mean
+        da = ds_mean.sel(quantile=quantile).mean(dim=["ensemble", "ssp"])[plot_col]
+        da = da.where(mask, drop=True)
+        vmin, vmax = get_vmin_vmax(
+            da,
+            metric_id,
+            analysis_type,
+            quantile,
+            rel,
+        )
+        # cmap
+        if metric_id in ["max_pr", "sum_pr"]:
+            if vmin < 0.0:
+                cmap = "RdBu"
+            else:
+                cmap = "Blues"
+        else:
+            cmap = "Oranges"
+
+        # Cbar label
+        if rel and analysis_type == "trends":
+            cbar_label = "Trend [%/decade]"
+        elif rel and analysis_type == "extreme_value":
+            cbar_label = "Change [%]"
+        elif not rel and analysis_type == "extreme_value":
+            cbar_label = f"Change {unit_labels[metric_id]}"
+        elif not rel and analysis_type == "trends":
+            cbar_label = f"Trend {unit_labels[metric_id]}"
+
+        ax = axs[0]
+        p = da.where(da != 0.0).plot(  # assume 0.0 is missing value
+            ax=ax,
+            add_colorbar=True,
+            vmin=vmin,
+            vmax=vmax,
+            cmap=cmap,
+            transform=ccrs.PlateCarree(),
+            cbar_kwargs={
+                "orientation": "horizontal",
+                "location": "bottom",
+                "label": cbar_label,
+                "pad": 0.05,
+                "shrink": 0.9,
+                "ticks": np.linspace(vmin, vmax, num=3),
+            },
+        )
+        # Tidy
+        tidy_ax(ax)
+        ax.set_title("")
+
+        ## Plot total uncertainty
+        # Mask out locations without all three ensembles
+        ds_uc = ds_uc.where(mask, drop=True)
+        da = ds_uc[total_uc_col]
+        ax = axs[1]
+        vmin, vmax = get_vmin_vmax(
+            da,
+            metric_id,
+            analysis_type,
+            quantile,
+            rel,
+        )
+        p = da.plot(
+            ax=ax,
+            add_colorbar=True,
+            vmin=vmin,
+            vmax=vmax,
+            cmap="PuRd",
+            transform=ccrs.PlateCarree(),
+            cbar_kwargs={
+                "orientation": "horizontal",
+                "location": "bottom",
+                "label": f"{norm_labels[total_uc_col]} {unit_labels[metric_id]}",
+                "pad": 0.05,
+                "shrink": 0.9,
+                "ticks": np.linspace(vmin, vmax, num=3),
+            },
+        )
+        # Tidy
+        tidy_ax(ax)
+        ax.set_title("")
+
+        # Title
+        subfigs[idm + idm_start].suptitle(
+            f"{subplot_labels[idm]} {title_labels[metric_id]}",
+            style="italic",
+            y=y_title,
         )
 
-    # Create a new axes for the colorbar at the bottom
-    if plot_fit_uc:
-        cbar_ax = fig.add_axes([0.515, 0.01, 0.2, 0.025])
-    else:
-        cbar_ax = fig.add_axes([0.5375, 0.01, 0.2, 0.025])
-
-    # Add colorbar using the stored mappable
-    cbar = fig.colorbar(p, cax=cbar_ax, orientation="horizontal")
-    cbar.set_label("Fraction of total uncertainty [%]")
-
-    if save_path is not None:
-        fig.savefig(save_path, dpi=300, bbox_inches="tight")
+    return p
 
 
-def plot_summary_stats(
+def plot_ensemble_ssp_means(
     metric_id,
     proj_slice,
     hist_slice,
@@ -582,7 +776,7 @@ def plot_summary_stats(
         fig, axs = plt.subplots(
             1,
             6,
-            figsize=(12, 4),
+            figsize=(12, 5),
             layout="constrained",
             subplot_kw=dict(projection=ccrs.LambertConformal()),
         )
@@ -609,27 +803,46 @@ def plot_summary_stats(
 
     # Get vmin, vmax to format nicely for 11 levels
     nlevels = 10
-    vmin = np.round(ds.sel(quantile=quantile)[plot_col].quantile(0.01).to_numpy(), decimals=0)
-    raw_range = ds.sel(quantile=quantile)[plot_col].quantile(0.95).to_numpy() - vmin
-    step_size = raw_range / nlevels
-    step_size = np.ceil(step_size * 2) / 2  # Round up to nearest 0.5
-    vmax = vmin + (step_size * nlevels)  # 10 steps total
+    if (
+        not rel
+        and analysis_type == "trends"
+        and metric_id in ["avg_tas", "avg_tasmin", "avg_tasmax"]
+    ):  # values are much smaller here
+        vmin = np.round(
+            ds.sel(quantile=quantile)[plot_col].min().to_numpy(), decimals=1
+        )
+        vmax = np.round(
+            ds.sel(quantile=quantile)[plot_col].max().to_numpy(), decimals=1
+        )
+    else:
+        vmin = np.round(
+            ds.sel(quantile=quantile)[plot_col].quantile(0.01).to_numpy(), decimals=0
+        )
+        if vmin > 0:
+            raw_range = (
+                ds.sel(quantile=quantile)[plot_col].quantile(0.95).to_numpy() - vmin
+            )
+            step_size = raw_range / nlevels
+            step_size = np.ceil(step_size * 2) / 2  # Round up to nearest 0.5
+            vmax = vmin + (step_size * nlevels)  # 10 steps total
+        else:
+            vmax = (
+                np.ceil(
+                    ds.sel(quantile=quantile)[plot_col].quantile(0.95).to_numpy()
+                    / nlevels
+                )
+                * nlevels
+            )  # Round up to nearest multiple
+            vmin = -vmax
 
-    # cmap for total uncertainty column
+    # cmap
     if metric_id in ["max_pr", "sum_pr"]:
-        cmap = "Blues"
+        if vmin < 0.0:
+            cmap = "RdBu"
+        else:
+            cmap = "Blues"
     else:
         cmap = "Oranges"
-
-    # UC scale factor: change to pct if needed
-    if rel:
-        if analysis_type == "trends":
-            scale_factor = 100.0 * 10.0  # decadal, pct trends
-        else:
-            scale_factor = 100.0  # pct changes
-    else:
-        scale_factor = 1.0
-
     # Loop through combos
     combos = [
         ("LOCA2", "ssp245"),
@@ -644,7 +857,7 @@ def plot_summary_stats(
         da = ds.sel(quantile=quantile, ensemble=ensemble, ssp=ssp)[plot_col]
         # Plot
         ax = axs[idx]
-        p = (scale_factor * da).plot(
+        p = da.where(da != 0.0).plot(  # assume 0.0 is missing value
             ax=ax,
             levels=nlevels + 1,
             add_colorbar=False,
@@ -655,17 +868,23 @@ def plot_summary_stats(
         )
         # Tidy
         ax.coastlines()
-        gl = ax.gridlines(draw_labels=False, x_inline=False, rotate_labels=False, alpha=0.2)
+        gl = ax.gridlines(
+            draw_labels=False, x_inline=False, rotate_labels=False, alpha=0.2
+        )
         ax.add_feature(cfeature.STATES, edgecolor="black", linewidth=0.5)
         ax.add_feature(cfeature.BORDERS, edgecolor="black", linewidth=0.5)
         ax.set_extent([-120, -73, 22, 51], ccrs.Geodetic())
         ax.set_title(f"{ensemble} {ssp_labels[ssp]}", fontsize=12)
 
     # Cbar
-    if rel:
-        cbar_label = "Relative change [%]"
-    else:
+    if rel and analysis_type == "trends":
+        cbar_label = "Trend \n[%/decade]"
+    elif rel and analysis_type == "extreme_value":
+        cbar_label = "Change [%]"
+    elif not rel and analysis_type == "extreme_value":
         cbar_label = f"Absolute change {unit_labels[metric_id]}"
+    elif not rel and analysis_type == "trends":
+        cbar_label = f"Trend {unit_labels[metric_id]}"
     fig.colorbar(
         p,
         orientation="vertical",
@@ -678,7 +897,20 @@ def plot_summary_stats(
     )
 
     if title is not None:
-        if title in ["", "a)", "b)", "c)", "d)", "e)"]:
+        if title in [
+            "",
+            "a)",
+            "b)",
+            "c)",
+            "d)",
+            "e)",
+            "i)",
+            "ii)",
+            "iii)",
+            "iv)",
+            "v)",
+            "vi)",
+        ]:
             fig.suptitle(
                 f"{title} {title_labels[metric_id]}",
                 style="italic",
@@ -690,6 +922,214 @@ def plot_summary_stats(
             fig.suptitle(title, style="italic", y=y_title, x=0.05, ha="left")
 
     return p
+
+
+# Main figure
+def plot_ensemble_mean_uq(
+    plot_metric_ids,
+    plot_col,
+    analysis_type,
+    summary_title,
+    uncertainty_title="b) Uncertainty decomposition",
+    proj_slice="1950-2100",
+    hist_slice=None,
+    return_period=100,
+    fit_method="mle",
+    stationary=False,
+    stat_str="nonstat_scale",
+    time_str=None,
+    rel_metric_ids=[],
+    grid="LOCA2",
+    norm="uc_99w_main",
+    vmax_uc=50,
+    figsize=(12, 7.5),
+    height_ratios=[1.15, 2],
+    a_y_title=1.2,
+    a_y_titles=1.1,
+    b_y_title=1.1,
+    b_y_titles=1.08,
+    x_title=0.05,
+    hspace=0.2,
+    save_path=None,
+):
+    fig = plt.figure(figsize=figsize, layout="constrained")
+    subfigs = fig.subfigures(2, 1, hspace=hspace, height_ratios=height_ratios)
+
+    ################# a) Summary plot
+    subfigs[0].suptitle(summary_title, fontweight="bold", y=a_y_title)
+
+    plot_ensemble_mean_uncertainty(
+        plot_metric_ids=plot_metric_ids,
+        proj_slice=proj_slice,
+        hist_slice=hist_slice,
+        plot_col=plot_col,
+        return_period=return_period,
+        grid=grid,
+        fit_method=fit_method,
+        stationary=stationary,
+        stat_str=stat_str,
+        time_str=time_str,
+        rel_metric_ids=rel_metric_ids,
+        analysis_type=analysis_type,
+        fig=subfigs[0],
+        y_title=a_y_titles,
+    )
+
+    ############# b) Uncertainty decomposition
+    b_subfigs = subfigs[1].subfigures(len(plot_metric_ids), 1, hspace=0.01)
+    subfigs[1].suptitle(uncertainty_title, fontweight="bold", y=b_y_title)
+    for idp, metric_id in enumerate(plot_metric_ids):
+        if len(plot_metric_ids) == 3:
+            axs = b_subfigs[idp].subplots(
+                1,
+                7,
+                subplot_kw=dict(projection=ccrs.LambertConformal()),
+                width_ratios=[0.65, 1, 1, 1, 1, 1, 0.65],
+            )
+        else:
+            axs = b_subfigs[idp].subplots(
+                1, 5, subplot_kw=dict(projection=ccrs.LambertConformal())
+            )
+        p = plot_uc_map(
+            metric_id=metric_id,
+            proj_slice=proj_slice,
+            hist_slice=hist_slice,
+            plot_col=plot_col,
+            return_period=return_period,
+            grid=grid,
+            fit_method=fit_method,
+            stationary=stationary,
+            stat_str=stat_str,
+            time_str=time_str,
+            rel_metric_ids=rel_metric_ids,
+            norm=norm,
+            analysis_type=analysis_type,
+            vmax_uc=vmax_uc,
+            y_title=b_y_titles,
+            title=subplot_labels[idp],
+            fig=b_subfigs[idp],
+            axs=axs[1:-1] if len(plot_metric_ids) == 3 else axs,
+            plot_fit_uc=True,
+            plot_total_uc=False,
+            x_title=x_title,
+        )
+        if len(plot_metric_ids) == 3:
+            # Remove first and last axes (for spacing)
+            axs[0].remove()
+            axs[-1].remove()
+
+    # Create a new axes for the colorbar at the bottom
+    cbar_ax = subfigs[1].add_axes(
+        [0.4, 0.01, 0.2, 0.025]
+    )  # [left, bottom, width, height]
+    cbar = subfigs[1].colorbar(p, cax=cbar_ax, orientation="horizontal")
+    cbar.set_label("Fraction of total uncertainty [%]")
+
+    if save_path is not None:
+        fig.savefig(save_path, dpi=400, bbox_inches="tight")
+    else:
+        plt.show()
+
+
+# Supplementary figure
+def plot_ensemble_ssp_means_uncertainty(
+    plot_metric_ids,
+    plot_col,
+    analysis_type,
+    summary_title,
+    uncertainty_title="b) Associated uncertainty and uncertainty decomposition",
+    proj_slice="1950-2100",
+    hist_slice=None,
+    return_period=100,
+    fit_method="mle",
+    stationary=False,
+    stat_str="nonstat_scale",
+    time_strs=None,
+    rel_metric_ids=[],
+    grid="LOCA2",
+    norm="uc_99w_main",
+    vmax_uc=50,
+    y_title=1.08,
+    figsize=(12, 11),
+    save_path=None,
+):
+    """
+    Plot summary statistics and uncertainty decomposition for given metrics.
+    """
+    if analysis_type == "trends":
+        time_strs = {metric_id: None for metric_id in plot_metric_ids}
+
+    fig = plt.figure(figsize=figsize, layout="constrained")
+    subfigs = fig.subfigures(2, 1, hspace=0.075)
+
+    ################# a) Summary plot
+    a_subfigs = subfigs[0].subfigures(len(plot_metric_ids), 1, hspace=0.01)
+    subfigs[0].suptitle(summary_title, fontweight="bold", y=1.09)
+
+    for idp, metric_id in enumerate(plot_metric_ids):
+        axs = a_subfigs[idp].subplots(
+            1, 6, subplot_kw=dict(projection=ccrs.LambertConformal())
+        )
+        plot_ensemble_ssp_means(
+            metric_id=metric_id,
+            proj_slice=proj_slice,
+            hist_slice=hist_slice,
+            plot_col=plot_col,
+            return_period=return_period,
+            grid=grid,
+            fit_method=fit_method,
+            stationary=stationary,
+            stat_str=stat_str,
+            time_str=time_strs[metric_id],
+            rel_metric_ids=rel_metric_ids,
+            analysis_type=analysis_type,
+            fig=a_subfigs[idp],
+            axs=axs,
+            title=subplot_labels[idp],
+            y_title=y_title,
+        )
+
+    ############# b) Uncertainty decomposition
+    b_subfigs = subfigs[1].subfigures(len(plot_metric_ids), 1, hspace=0.01)
+    subfigs[1].suptitle(uncertainty_title, fontweight="bold", y=1.09)
+
+    for idp, metric_id in enumerate(plot_metric_ids):
+        axs = b_subfigs[idp].subplots(
+            1, 6, subplot_kw=dict(projection=ccrs.LambertConformal())
+        )
+        p = plot_uc_map(
+            metric_id=metric_id,
+            proj_slice=proj_slice,
+            hist_slice=hist_slice,
+            plot_col=plot_col,
+            return_period=return_period,
+            grid=grid,
+            fit_method=fit_method,
+            stationary=stationary,
+            stat_str=stat_str,
+            time_str=time_strs[metric_id],
+            rel_metric_ids=rel_metric_ids,
+            norm=norm,
+            analysis_type=analysis_type,
+            vmax_uc=vmax_uc,
+            y_title=y_title,
+            title=subplot_labels[idp],
+            fig=b_subfigs[idp],
+            axs=axs,
+            plot_fit_uc=True,
+        )
+
+    # Create a new axes for the colorbar at the bottom
+    cbar_ax = subfigs[1].add_axes(
+        [0.515, 0.01, 0.2, 0.025]
+    )  # [left, bottom, width, height]
+    cbar = subfigs[1].colorbar(p, cax=cbar_ax, orientation="horizontal")
+    cbar.set_label("Fraction of total uncertainty [%]")
+
+    if save_path is not None:
+        fig.savefig(save_path, dpi=400, bbox_inches="tight")
+    else:
+        plt.show()
 
 
 #######################
@@ -711,7 +1151,9 @@ def plot_jagged_scatter(
         data = data[data["quantile"] == "main"]
 
     # Random offsets for y-axis
-    y_offsets = np.clip(np.random.normal(loc=0.0, scale=jitter_amount, size=len(data)), -0.4, 0.4)
+    y_offsets = np.clip(
+        np.random.normal(loc=0.0, scale=jitter_amount, size=len(data)), -0.4, 0.4
+    )
     y_values = [position + offset for offset in y_offsets]
 
     # Create jagged scatter plot
@@ -727,7 +1169,9 @@ def plot_jagged_scatter(
     )
 
 
-def plot_conf_intvs(df, plot_col, positions, color, ax, limits=None, lw=1.5, s=20, alpha=1):
+def plot_conf_intvs(
+    df, plot_col, positions, color, ax, limits=None, lw=1.5, s=20, alpha=1
+):
     # Filter data below limits if desired
     if limits is not None:
         data = df[(df[plot_col] < limits[1]) & (df[plot_col] > limits[0])]
@@ -770,7 +1214,9 @@ def transform_samples_to_quantile(df):
         .reset_index()
         .rename(columns={"index": "quantile"})
     )
-    df_quantiles["quantile"] = df_quantiles["quantile"].map({0.025: "q025", 0.975: "q975"})
+    df_quantiles["quantile"] = df_quantiles["quantile"].map(
+        {0.025: "q025", 0.975: "q975"}
+    )
     # Get overall mean
     df_mean = pd.DataFrame(df.mean(numeric_only=True)).T
     df_mean["quantile"] = "main"
@@ -783,9 +1229,13 @@ def aggregate_quantiles(df):
     which takes the upper and lower pre-computed quantiles.
     Note this only works for one GCM/SSP combination.
     """
-    df_lower = pd.DataFrame(df[df["quantile"] == "q025"].quantile(0.005, numeric_only=True)).T
+    df_lower = pd.DataFrame(
+        df[df["quantile"] == "q025"].quantile(0.005, numeric_only=True)
+    ).T
     df_lower["quantile"] = "q025"
-    df_upper = pd.DataFrame(df[df["quantile"] == "q975"].quantile(0.995, numeric_only=True)).T
+    df_upper = pd.DataFrame(
+        df[df["quantile"] == "q975"].quantile(0.995, numeric_only=True)
+    ).T
     df_upper["quantile"] = "q975"
     df_quantiles = pd.concat([df_lower, df_upper], ignore_index=True)
 
@@ -848,7 +1298,9 @@ def plot_city_results(
 
     # Fix negation for min_tasmin, non-stationry models
     if metric_id == "min_tasmin" and not stationary:
-        df.loc[df["n_boot"] != "main", plot_col] = -df.loc[df["n_boot"] != "main", plot_col]
+        df.loc[df["n_boot"] != "main", plot_col] = -df.loc[
+            df["n_boot"] != "main", plot_col
+        ]
 
     df_uc = sacu.calculate_df_uc(df, plot_col)
     df = df.set_index(["ensemble", "gcm", "member", "ssp"])
@@ -857,7 +1309,9 @@ def plot_city_results(
 
     # Make figure if needed
     if axs is None:
-        fig, axs = plt.subplots(2, 1, figsize=(5, 11), height_ratios=[5, 1], layout="constrained")
+        fig, axs = plt.subplots(
+            2, 1, figsize=(5, 11), height_ratios=[5, 1], layout="constrained"
+        )
 
     if title is None:
         axs[0].set_title(title_labels[metric_id])
@@ -970,7 +1424,9 @@ def plot_city_results(
             lw=3,
             limits=limits,
         )
-        plot_jagged_scatter(df_sel, plot_col, [idy], ssp_colors["ssp370"], ax, limits=limits)
+        plot_jagged_scatter(
+            df_sel, plot_col, [idy], ssp_colors["ssp370"], ax, limits=limits
+        )
         label_names.append(f"{gcm} ({df_sel.index.nunique()})")
         label_idy.append(idy)
         idy += 1
@@ -1098,7 +1554,11 @@ def plot_city_results(
 
     # Get xlabel
     xlabel_str = (
-        "Change in" if "diff" in plot_col else "Change factor:" if "chfc" in plot_col else ""
+        "Change in"
+        if "diff" in plot_col
+        else "Change factor:"
+        if "chfc" in plot_col
+        else ""
     )
     return_level_str = plot_col.split("yr")[0]
     ax.set_xlabel(f"{xlabel_str} {return_level_str}-year return level{unit_str}")
@@ -1187,12 +1647,14 @@ def plot_uc_rls(
     hist_slice,
     fit_method,
     stat_str,
-    grid,
-    regrid_method,
+    grid="LOCA2",
+    regrid_method="nearest",
     total_uc="uc_99w_main",
+    plot_total_uc=False,
     return_periods=[10, 25, 50, 100],
     metric_ids=gev_metric_ids[:3],
-    title=None,
+    ax_title=False,
+    fig_title=None,
     store_path=None,
     axs=None,
     fig=None,
@@ -1202,13 +1664,16 @@ def plot_uc_rls(
     y_title=1.05,
     time_str=None,
     plot_fit_uc=True,
+    xlabel=True,
+    xticklabels=True,
+    fontsize=10,
 ):
     # Make figure
     if axs is None:
         fig, axs = plt.subplots(
             1,
-            3,
-            figsize=(11, 4.5),
+            len(metric_ids),
+            figsize=(3.5 * len(metric_ids), 4.5),
             sharey=True,
             gridspec_kw={"wspace": 0.1},
             layout="constrained",
@@ -1223,11 +1688,13 @@ def plot_uc_rls(
                 file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{return_period}yr_return_level_{time_str}_{fit_method}_{stat_str}_{grid}grid_{regrid_method}.nc"
             else:
                 file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{return_period}yr_return_level_{time_str}_{fit_method}_{stat_str}_{grid}grid_{regrid_method}.nc"
-            ds.append(xr.open_dataset(file_path).assign_coords(return_period=return_period))
+            ds.append(
+                xr.open_dataset(file_path).assign_coords(return_period=return_period)
+            )
         ds = xr.concat(ds, dim="return_period", coords="minimal")
 
         # Mask out locations without all three ensembles
-        mask = ds.to_array().sum(dim="variable", skipna=False) >= 0.0
+        mask = xr.open_dataset(f"{project_data_path}/mask.nc")["mask"]
         ds = ds.where(mask, drop=True)
 
         # Ready for plot
@@ -1235,33 +1702,40 @@ def plot_uc_rls(
             df = ds.mean(dim=["lat", "lon"]).to_dataframe().droplevel("quantile")
         else:
             df = (
-                ds.sel(lat=coord_or_mean[0], lon=360 + coord_or_mean[1], method="nearest")
+                ds.sel(
+                    lat=coord_or_mean[0], lon=360 + coord_or_mean[1], method="nearest"
+                )
                 .to_dataframe()
                 .droplevel("quantile")
             )
         df_total_uc = df[total_uc]
 
         # Plot total UC first with lower alpha
-        ax1 = axs[idm].twinx()
-        # ax1.plot(df.index, df_total_uc, lw=2, color="black", alpha=0.5)
-        ax1.scatter(df.index, df_total_uc, s=50, marker="X", color="black", alpha=0.8)
-        ax1.set_ylabel(f"Total uncertainty {gev_labels[metric_id]}", rotation=-90, va="bottom")
+        if plot_total_uc:
+            ax1 = axs[idm].twinx()
+            # ax1.plot(df.index, df_total_uc, lw=2, color="black", alpha=0.5)
+            ax1.scatter(
+                df.index, df_total_uc, s=50, marker="X", color="black", alpha=0.8
+            )
+            ax1.set_ylabel(
+                f"Total uncertainty {gev_labels[metric_id]}", rotation=-90, va="bottom"
+            )
 
         # Plot UC components on top with higher alpha
-        ax = axs[idm]
+        ax = axs[idm] if isinstance(axs, list) else axs
         for uc_type in uc_labels:
             if not plot_fit_uc and uc_type == "fit_uc":
                 continue
             ax.plot(
                 df.index,
-                df[uc_type] / df[total_uc],
+                df[uc_type] / df[total_uc] * 100,
                 lw=2,
                 color=uc_colors[uc_type],
                 alpha=0.9,
             )
             ax.scatter(
                 df.index,
-                df[uc_type] / df[total_uc],
+                df[uc_type] / df[total_uc] * 100,
                 s=50,
                 marker=uc_markers[uc_type],
                 color=uc_colors[uc_type],
@@ -1271,31 +1745,24 @@ def plot_uc_rls(
         # Tidy
         ax.grid(alpha=0.5)
         ax.set_xticks(return_periods)
-        title_str = (
-            title_labels[metric_id]
-            # .replace("minimum", "minimum\n")
-            # .replace("maximum", "maximum\n")
-        )
-        ax.set_title(f"{subfigure_labels[idm + idm_start]} {title_str}", fontstyle="italic")
-        ax.set_xlabel("Return period")
-        ax.set_xticklabels(return_periods)
+        if ax_title:
+            title_str = title_labels[metric_id]
+            ax.set_title(
+                f"{subplot_labels[idm + idm_start]} {title_str}", fontstyle="italic"
+            )
+        if xlabel:
+            ax.set_xlabel("Return period", fontsize=fontsize)
+        if xticklabels:
+            ax.set_xticklabels(return_periods, fontsize=fontsize)
+        else:
+            ax.set_xticklabels([])
 
-    # Tidy
-    axs[0].set_ylabel("Relative contribution")
+        # Tidy
+        ax.set_ylabel("Relative contribution [%]", fontsize=fontsize)
+        ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
 
     # Add legend below bottom row
     legend_elements = [
-        Line2D(
-            [0],
-            [0],
-            marker="X",
-            lw=0,
-            alpha=0.8,
-            markersize=10,
-            color="black",
-            label="Total uncertainty",
-        )
-    ] + [
         Line2D(
             [0],
             [0],
@@ -1307,6 +1774,18 @@ def plot_uc_rls(
         )
         for uc_type in uc_labels
     ]
+    if plot_total_uc:
+        legend_elements.append(
+            Line2D(
+                [0],
+                [0],
+                marker="X",
+                lw=3,
+                markersize=10,
+                color="black",
+                label="Total uncertainty",
+            )
+        )
     if legend:
         fig.legend(
             handles=legend_elements,
@@ -1317,8 +1796,8 @@ def plot_uc_rls(
         )
 
     # Add title
-    if title is not None:
-        fig.suptitle(title, fontweight="bold", y=y_title)
+    if fig_title is not None:
+        fig.suptitle(fig_title, fontweight="bold", y=y_title)
 
     # Store
     if store_path is not None:
@@ -1329,3 +1808,118 @@ def plot_uc_rls(
 
     if return_legend:
         return legend_elements
+
+
+def plot_response_rls(
+    coord_or_mean,
+    proj_slice,
+    hist_slice,
+    fit_method,
+    stat_str,
+    grid="LOCA2",
+    regrid_method="nearest",
+    return_periods=[10, 25, 50, 100],
+    metric_ids=gev_metric_ids[:3],
+    ax_title=False,
+    fig_title=None,
+    store_path=None,
+    axs=None,
+    fig=None,
+    legend=True,
+    idm_start=0,
+    y_title=1.05,
+    time_str=None,
+    xlabel=True,
+    xticklabels=True,
+    fontsize=10,
+):
+    # Make figure
+    if axs is None:
+        fig, axs = plt.subplots(
+            1,
+            len(metric_ids),
+            figsize=(3.5 * len(metric_ids), 4.5),
+            sharey=True,
+            gridspec_kw={"wspace": 0.1},
+            layout="constrained",
+        )
+
+    # Loop through metrics
+    for idm, metric_id in enumerate(metric_ids):
+        # Read all return levels
+        ds = []
+        for return_period in return_periods:
+            if stat_str == "stat":
+                file_path = f"{project_data_path}/results/summary_{metric_id}_{proj_slice}_{hist_slice}_{return_period}yr_return_level_{time_str}_{fit_method}_{stat_str}_{grid}grid_{regrid_method}.nc"
+            else:
+                file_path = f"{project_data_path}/results/summary_{metric_id}_{proj_slice}_{return_period}yr_return_level_{time_str}_{fit_method}_{stat_str}_{grid}grid_{regrid_method}.nc"
+            ds.append(xr.open_dataset(file_path))
+        ds = xr.combine_by_coords(ds)
+
+        # Mask out locations without all three ensembles
+        mask = xr.open_dataset(f"{project_data_path}/mask.nc")["mask"]
+        ds = ds.where(mask, drop=True)
+
+        # Ready for plot
+        if coord_or_mean == "mean":
+            df = (
+                ds.mean(dim=["lat", "lon"]).mean(dim=["ensemble", "ssp"]).to_dataframe()
+            )
+        else:
+            df = (
+                ds.sel(
+                    lat=coord_or_mean[0], lon=360 + coord_or_mean[1], method="nearest"
+                )
+                .mean(dim=["ensemble", "ssp"])
+                .to_dataframe()
+            )
+
+        # Reshape
+        df = df[[f"{return_period}yr_return_level" for return_period in return_periods]]
+        df.columns = [int(col.split("yr")[0]) for col in df.columns]
+        df_plot = pd.DataFrame(
+            df.stack().rename("return_level").rename_axis(["quantile", "return_period"])
+        ).sort_index()
+
+        # Plot mean and 99% range
+        ax = axs[idm] if isinstance(axs, list) else axs
+        ax.plot(return_periods, df_plot.loc["mean"], color="white")
+        ax.fill_between(
+            return_periods,
+            y1=df_plot.loc["q01"]["return_level"],
+            y2=df_plot.loc["q99"]["return_level"],
+            alpha=0.9,
+            color="gray",
+        )
+
+        # Tidy
+        ax.grid(alpha=0.5)
+        ax.set_xticks(return_periods)
+        title_str = title_labels[metric_id]
+        if ax_title:
+            ax.set_title(
+                f"{subplot_labels[idm + idm_start]} {title_str}",
+                fontstyle="italic",
+                loc="left",
+            )
+        if xlabel:
+            ax.set_xlabel("Return period", fontsize=fontsize)
+        if xticklabels:
+            ax.set_xticklabels(return_periods, fontsize=fontsize)
+        else:
+            ax.set_xticklabels([])
+
+        # Tidy
+        ylabel = "Change in return level" if "diff" in time_str else "Return level"
+        ax.set_ylabel(f"{ylabel} {gev_labels[metric_id]}", fontsize=fontsize)
+
+    # Add title
+    if fig_title is not None:
+        fig.suptitle(fig_title, fontweight="bold", y=y_title)
+
+    # Store
+    if store_path is not None:
+        fig.savefig(f"../figs/{store_path}.pdf", bbox_inches="tight")
+
+    if axs is None:
+        plt.show()
