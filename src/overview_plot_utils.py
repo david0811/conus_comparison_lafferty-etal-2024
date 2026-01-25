@@ -628,7 +628,7 @@ def make_figure(
 
     if save_fig:
         plt.savefig(
-            f"{project_code_path}/figs/figure1.png", dpi=600, bbox_inches="tight"
+            f"{project_code_path}/figs/main/figure1.png", dpi=600, bbox_inches="tight"
         )
     else:
         plt.show()
