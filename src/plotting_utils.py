@@ -67,17 +67,17 @@ gev_labels = {
     "min_tasmin": "[°C]",
 }
 rel_labels = {
-    "avg_tas": "[%]",
-    "avg_tasmin": "[%]",
-    "avg_tasmax": "[%]",
-    "sum_pr": "[%]",
-    "sum_cdd": "[%]",
-    "sum_hdd": "[%]",
-    "max_tasmax": "[%]",
-    "max_cdd": "[%]",
-    "max_hdd": "[%]",
-    "max_pr": "[%]",
-    "min_tasmin": "[%]",
+    "avg_tas": "[]",
+    "avg_tasmin": "[]",
+    "avg_tasmax": "[]",
+    "sum_pr": "[]",
+    "sum_cdd": "[]",
+    "sum_hdd": "[]",
+    "max_tasmax": "[]",
+    "max_cdd": "[]",
+    "max_hdd": "[]",
+    "max_pr": "[]",
+    "min_tasmin": "[]",
 }
 norm_labels = {
     "uc_99w": r"99% range",
@@ -190,7 +190,7 @@ def tidy_ax_conus(ax):
     ax.set_extent([-120, -73, 22, 51], ccrs.Geodetic())
 
 
-def get_vmin_vmax(da, metric_id, decimal_places=1):
+def get_vmin_vmax(da, metric_id, decimal_places=1, chfc=False):
     """
     Calculate vmin and vmax for colorbar with nicely formatted tick labels.
     Parameters
@@ -210,6 +210,10 @@ def get_vmin_vmax(da, metric_id, decimal_places=1):
         decimal_places_out = 0
     else:
         decimal_places_out = 1
+
+    # Overwrite for change factor
+    if chfc:
+        decimal_places_out = 2
 
     if metric_id in ["sum_pr", "max_pr"]:
         cmap = "BrBG"
@@ -621,15 +625,19 @@ def plot_ensemble_mean_uncertainty(
         )
     # Set up subfigs
     if narrow_subfigs:
-        subfigs = fig.subfigures(1, 4, width_ratios=[0.2, 1, 1, 0.2])
+        subfigs = fig.subfigures(1, 3, width_ratios=[0.4, 1, 0.4])
         idm_start = 1
     else:
         subfigs = fig.subfigures(1, len(plot_metric_ids))
         idm_start = 0
-
+        if len(plot_metric_ids) == 1:
+            subfigs = [subfigs]
+    # Loop through metrics
     for idm, metric_id in enumerate(plot_metric_ids):
         axs = subfigs[idm + idm_start].subplots(
-            1, 2, subplot_kw=dict(projection=ccrs.LambertConformal())
+            1,
+            2,
+            subplot_kw=dict(projection=ccrs.LambertConformal()),
         )
         # We can choose to normalize by a specific metric id
         if metric_id in rel_metric_ids:
@@ -679,8 +687,8 @@ def plot_ensemble_mean_uncertainty(
         elif analysis_type == "extreme_value":
             if "chfc" in time_str:
                 unit_labels = rel_labels
-                ds_mean[plot_col] = ds_mean[plot_col] * 100  # pct changes
-                ds_uc[total_uc_col] = ds_uc[total_uc_col] * 100  # pct changes
+                ds_mean[plot_col] = ds_mean[plot_col]
+                ds_uc[total_uc_col] = ds_uc[total_uc_col]
             else:
                 unit_labels = gev_labels
         else:
@@ -692,26 +700,30 @@ def plot_ensemble_mean_uncertainty(
         # Plot mean
         da = ds_mean.sel(quantile=quantile).mean(dim=["ensemble", "ssp"])[plot_col]
         da = da.where(mask, drop=True)
-        vmin, vmax, cmap = get_vmin_vmax(da, metric_id)
+        if analysis_type == "extreme_value" and "chfc" in time_str:
+            vmin, vmax, cmap = get_vmin_vmax(da, metric_id, decimal_places=2, chfc=True)
+        else:
+            vmin, vmax, cmap = get_vmin_vmax(da, metric_id)
         # cmap
         if cmap is None:
             if metric_id in ["max_pr", "sum_pr"]:
                 cmap = devon_map
             else:
-                cmap = lajolla_map if "max" in metric_id else imola_map
+                cmap = "Blues_r" if "min" in metric_id else lajolla_map
 
         # Cbar label
         if rel and analysis_type == "trends":
             cbar_label = "Trend [%/decade]"
-        elif rel and analysis_type == "extreme_value":
-            cbar_label = "Change [%]"
-        elif not rel and analysis_type == "extreme_value":
-            if "diff" in time_str:
+        elif not rel and analysis_type == "trends":
+            cbar_label = f"Trend {unit_labels[metric_id]}"
+
+        if analysis_type == "extreme_value":
+            if "chfc" in time_str:
+                cbar_label = "Change factor []"
+            elif "diff" in time_str:
                 cbar_label = f"Change {unit_labels[metric_id]}"
             else:
                 cbar_label = f"Level {unit_labels[metric_id]}"
-        elif not rel and analysis_type == "trends":
-            cbar_label = f"Trend {unit_labels[metric_id]}"
 
         ax = axs[0]
         p = da.where(da != 0.0).plot(  # assume 0.0 is missing value
@@ -739,7 +751,10 @@ def plot_ensemble_mean_uncertainty(
         ds_uc = ds_uc.where(mask, drop=True)
         da = ds_uc[total_uc_col]
         ax = axs[1]
-        vmin, vmax, cmap = get_vmin_vmax(da, metric_id)
+        if analysis_type == "extreme_value" and "chfc" in time_str:
+            vmin, vmax, cmap = get_vmin_vmax(da, metric_id, decimal_places=2, chfc=True)
+        else:
+            vmin, vmax, cmap = get_vmin_vmax(da, metric_id)
         p = da.plot(
             ax=ax,
             add_colorbar=True,
@@ -837,7 +852,7 @@ def plot_ensemble_ssp_means(
     elif analysis_type == "extreme_value":
         if "chfc" in time_str:
             unit_labels = rel_labels
-            ds[plot_col] = ds[plot_col] * 100  # pct changes
+            ds[plot_col] = ds[plot_col]
         else:
             unit_labels = gev_labels
     else:
@@ -847,8 +862,8 @@ def plot_ensemble_ssp_means(
             unit_labels = avg_labels
 
     # Get vmin, vmax to format nicely for 11 levels
-    if "diff" not in time_str:
-        vmin, vmax, cmap = get_vmin_vmax(ds[plot_col], metric_id, decimal_places=2)
+    if "chfc" in time_str:
+        vmin, vmax, cmap = get_vmin_vmax(ds[plot_col], metric_id, decimal_places=3)
     else:
         vmin, vmax, cmap = get_vmin_vmax(ds[plot_col], metric_id, decimal_places=2)
 
@@ -984,6 +999,7 @@ def plot_ensemble_mean_uq(
     plot_fit_uc=True,
     figsize=(12, 7.5),
     height_ratios=[1.15, 2],
+    narrow_subfigs=False,
     a_y_title=1.2,
     a_y_titles=1.1,
     b_y_title=1.1,
@@ -991,7 +1007,8 @@ def plot_ensemble_mean_uq(
     x_title=0.05,
     hspace=0.2,
     fs=8,
-    save_path=None,
+    cbar_ax=[0.4, 0.01, 0.2, 0.025],
+    store_path=None,
 ):
     fig = plt.figure(figsize=figsize, layout="constrained")
     subfigs = fig.subfigures(2, 1, hspace=hspace, height_ratios=height_ratios)
@@ -1014,10 +1031,15 @@ def plot_ensemble_mean_uq(
         analysis_type=analysis_type,
         fig=subfigs[0],
         y_title=a_y_titles,
+        narrow_subfigs=narrow_subfigs,
     )
 
     ############# b) Uncertainty decomposition
     b_subfigs = subfigs[1].subfigures(len(plot_metric_ids), 1, hspace=0.01)
+    # Handle single metric case - wrap in list for consistent indexing
+    if len(plot_metric_ids) == 1:
+        b_subfigs = [b_subfigs]
+
     subfigs[1].suptitle(uncertainty_title, fontweight="bold", y=b_y_title)
     for idp, metric_id in enumerate(plot_metric_ids):
         if len(plot_metric_ids) == 3:
@@ -1063,14 +1085,12 @@ def plot_ensemble_mean_uq(
             axs[-1].remove()
 
     # Create a new axes for the colorbar at the bottom
-    cbar_ax = subfigs[1].add_axes(
-        [0.4, 0.01, 0.2, 0.025]
-    )  # [left, bottom, width, height]
+    cbar_ax = subfigs[1].add_axes(cbar_ax)  # [left, bottom, width, height]
     cbar = subfigs[1].colorbar(p, cax=cbar_ax, orientation="horizontal")
     cbar.set_label("Fraction of total uncertainty [%]")
 
-    if save_path is not None:
-        fig.savefig(save_path, dpi=400, bbox_inches="tight")
+    if store_path is not None:
+        fig.savefig(store_path, dpi=400, bbox_inches="tight")
     else:
         plt.show()
 
@@ -1094,7 +1114,7 @@ def plot_ensemble_ssp_means_uncertainty(
     vmax_uc=50,
     y_title=1.08,
     figsize=(12, 6),
-    save_path=None,
+    store_path=None,
 ):
     """
     Plot summary statistics and uncertainty decomposition for given metrics.
@@ -1102,10 +1122,6 @@ def plot_ensemble_ssp_means_uncertainty(
     if analysis_type == "trends":
         time_str = None
 
-    fig = plt.figure(figsize=figsize, layout="constrained")
-    subfigs = fig.subfigures(2, 1, hspace=0.075)
-
-    ################# Summary plot
     fig = plt.figure(figsize=figsize, layout="constrained")
     subfigs = fig.subfigures(len(plot_metric_ids), 1, hspace=0.01)
     fig.suptitle(summary_title, fontweight="bold", y=1.09)
@@ -1133,8 +1149,8 @@ def plot_ensemble_ssp_means_uncertainty(
             y_title=y_title,
         )
 
-    if save_path is not None:
-        fig.savefig(save_path, dpi=400, bbox_inches="tight")
+    if store_path is not None:
+        fig.savefig(store_path, dpi=400, bbox_inches="tight")
     else:
         plt.show()
 
