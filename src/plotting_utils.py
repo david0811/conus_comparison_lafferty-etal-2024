@@ -54,11 +54,13 @@ ssp_colors = {
     "ssp370": "#7570b3",
     "ssp585": "#d95f02",
 }
+
 ssp_labels = {
     "ssp245": "SSP2-4.5",
     "ssp370": "SSP3-7.0",
     "ssp585": "SSP5-8.5",
 }
+
 gev_labels = {
     "max_tasmax": "[°C]",
     "max_cdd": "[degree days]",

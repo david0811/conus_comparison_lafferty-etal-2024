@@ -91,6 +91,29 @@ loca_gard_mapping = {
 # Other
 #################################
 def map_store_names(ensemble, gcm, member):
+    """
+    Map GCM and ensemble member names to standardized storage naming conventions.
+    
+    This function standardizes GCM (Global Climate Model) names and maps ensemble
+    member identifiers, particularly handling special cases for LOCA2 ensemble data.
+    
+    Args:
+        ensemble (str): The ensemble name (e.g., "LOCA2", "GARD").
+        gcm (str): The GCM identifier, which may use abbreviated naming conventions.
+        member (str): The ensemble member identifier.
+    
+    Returns:
+        tuple: A tuple containing:
+            - gcm_name (str): The standardized GCM name.
+            - member_name (str): The mapped or original ensemble member identifier.
+    
+    Notes:
+        - GARD GCM names are automatically converted to their full names:
+          "canesm5" -> "CanESM5", "ecearth3" -> "EC-Earth3", "cesm2" -> "CESM2-LENS"
+        - For LOCA2 ensemble with CESM2-LENS GCM, member names are mapped using
+          the loca_gard_mapping dictionary if available.
+        - Otherwise, member names are returned unchanged.
+    """
     # Update GARD GCMs
     gcm_name = (
         gcm.replace("canesm5", "CanESM5")
@@ -107,6 +130,7 @@ def map_store_names(ensemble, gcm, member):
         member_name = member
 
     return gcm_name, member_name
+
 
 
 def check_data_length(data, ensemble, gcm, ssp, years, include_neighbors=False):
