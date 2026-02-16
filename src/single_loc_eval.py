@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.stats import genextreme
-import matplotlib.pyplot as plt
+
 from plotting_utils import gev_labels
 
 
@@ -26,7 +26,7 @@ def gev_qq_plot(
     - df_fit: DataFrame with fitted GEV parameters
     - df_obs: DataFrame with observed data
     - metric_id: Metric ID
-    - gev_type: Type of GEV fit (stat, nonstat, nonstat-scale)
+    - gev_type: Type of GEV fit (stat, nonstat, nonstat_scale)
 
     Outputs:
     - Dictionary with results
@@ -119,7 +119,9 @@ def gev_qq_plot(
         qq_rmse = np.sqrt(np.mean((theoretical_quantiles - observed_sorted) ** 2))
 
         # Log likelihood
-        log_lik = np.sum(genextreme.logpdf(observed_data, main_shape, main_loc, main_scale))
+        log_lik = np.sum(
+            genextreme.logpdf(observed_data, main_shape, main_loc, main_scale)
+        )
 
     elif gev_type in ["nonstat", "nonstat_scale"]:
         # Standard Gumbel quantiles
@@ -153,12 +155,14 @@ def gev_qq_plot(
         qq_rmse = np.sqrt(np.mean((theoretical_quantiles - z_sorted) ** 2))
 
         # Log likelihood
-        log_lik = np.sum(genextreme.logpdf(
-            observed_data,
-            main_shape,
-            main_locs,
-            main_scales,
-        ))
+        log_lik = np.sum(
+            genextreme.logpdf(
+                observed_data,
+                main_shape,
+                main_locs,
+                main_scales,
+            )
+        )
 
     # Plot
     if ax is not None:

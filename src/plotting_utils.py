@@ -124,6 +124,7 @@ title_labels = {
     "sum_cdd": "Annual total cooling degree days",
     "sum_hdd": "Annual total heating degree days",
 }
+
 city_names = {
     "chicago": "Chicago",
     "seattle": "Seattle",
@@ -132,8 +133,21 @@ city_names = {
     "nyc": "New York",
     "sanfrancisco": "San Francisco",
     "boston": "Boston",
-    "nashville": "Nashville",
+    "raleigh": "Raleigh",
+    "orlando": "Orlando",
+    "atlanta": "Atlanta",
+    "stlouis": "St. Louis",
+    "minneapolis": "Minneapolis",
+    "bozeman": "Bozeman",
+    "albuquerque": "Albuquerque",
+    "oklahoma_city": "Oklahoma City",
+    "lasvegas": "Las Vegas",
+    "sandiego": "San Diego",
+    "pittsburgh": "Pittsburgh",
+    "boise": "Boise",
+    "bismarck": "Bismarck",
 }
+
 uc_labels = {
     "ssp_uc": "Scenario uncertainty",
     "gcm_uc": "Response uncertainty",
@@ -406,7 +420,8 @@ def plot_uc_map(
         else:
             file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{return_period}yr_return_level_{time_str}_{fit_method}_{stat_str}_{grid}grid_{regrid_method}{filter_str}.nc"
     elif analysis_type == "averages":
-        file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{grid}grid_{regrid_method}{filter_str}.nc"
+        var_id = metric_id.split("_")[1]
+        file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{var_id}_{grid}grid_{regrid_method}{filter_str}.nc"
 
     uc = xr.open_dataset(file_path)
 
@@ -668,8 +683,9 @@ def plot_ensemble_mean_uncertainty(
                 mean_file_path = f"{project_data_path}/results/summary_{metric_id}_{proj_slice}_{return_period}yr_return_level_{time_str}_{fit_method}_{stat_str}_{grid}grid_{regrid_method}{filter_str}.nc"
                 uc_file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{return_period}yr_return_level_{time_str}_{fit_method}_{stat_str}_{grid}grid_{regrid_method}{filter_str}.nc"
         elif analysis_type == "averages":
-            mean_file_path = f"{project_data_path}/results/summary_{metric_id}_{proj_slice}_{hist_slice}_{grid}grid_{regrid_method}{filter_str}.nc"
-            uc_file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{grid}grid_{regrid_method}{filter_str}.nc"
+            var_id = metric_id.split("_")[1]
+            mean_file_path = f"{project_data_path}/results/summary_{metric_id}_{proj_slice}_{hist_slice}_{var_id}_{grid}grid_{regrid_method}{filter_str}.nc"
+            uc_file_path = f"{project_data_path}/results/{metric_id}_{proj_slice}_{hist_slice}_{var_id}_{grid}grid_{regrid_method}{filter_str}.nc"
 
         ds_mean = xr.open_dataset(mean_file_path)
         ds_uc = xr.open_dataset(uc_file_path)
@@ -693,7 +709,8 @@ def plot_ensemble_mean_uncertainty(
                 ds_uc[total_uc_col] = ds_uc[total_uc_col]
             else:
                 unit_labels = gev_labels
-        else:
+        elif analysis_type == "averages":
+            ds_mean = ds_mean.rename({metric_id.split("_")[1]: plot_col})
             if rel:
                 unit_labels = rel_labels
             else:
@@ -726,6 +743,9 @@ def plot_ensemble_mean_uncertainty(
                 cbar_label = f"Change {unit_labels[metric_id]}"
             else:
                 cbar_label = f"Level {unit_labels[metric_id]}"
+
+        if analysis_type == "averages":
+            cbar_label = f"Average {unit_labels[metric_id]}"
 
         ax = axs[0]
         p = da.where(da != 0.0).plot(  # assume 0.0 is missing value
@@ -874,7 +894,7 @@ def plot_ensemble_ssp_means(
         if metric_id in ["max_pr", "sum_pr"]:
             cmap = devon_map
         else:
-            cmap = lajolla_map if "max" in metric_id else imola_map
+            cmap = "Blues_r" if "min" in metric_id else lajolla_map
 
     # Loop through quantiles
     for idq, quantile in enumerate(["q01", "mean", "q99"]):
