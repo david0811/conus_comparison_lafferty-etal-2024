@@ -37,7 +37,6 @@ def gev_qq_plot(
             # Historical stat fits are the same for all SSPs
             df_fit_sel = df_fit[
                 (df_fit["gcm"] == gcm)
-                & (df_fit["ssp"] == "ssp370")
                 & (df_fit["member"] == member)
                 & (df_fit["ensemble"] == ensemble)
             ]
@@ -73,7 +72,6 @@ def gev_qq_plot(
 
         df_obs_sel = df_obs[
             (df_obs["gcm"] == gcm)
-            & (df_obs["ssp"] == ssp)
             & (df_obs["member"] == member)
             & (df_obs["ensemble"] == ensemble)
             & (df_obs["time"] >= year_min)

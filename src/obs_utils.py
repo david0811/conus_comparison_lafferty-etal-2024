@@ -1,6 +1,6 @@
-import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
 
@@ -163,4 +163,4 @@ def plot_dataset_comparison(
         location="bottom",
     )
 
-    plt.show()
+    return fig, axes
