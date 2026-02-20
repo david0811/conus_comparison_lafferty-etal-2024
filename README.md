@@ -58,6 +58,9 @@ The following scripts can then be used to reproduce the experiment:
 | 03a_sa-eva.ipynb | Performs sensitivity analysis for EVA. |
 | 03b_sa-trends.ipynb | Performs sensitivity analysis for trends. |
 | 03c_sa-averages.ipynb | Performs sensitivity analysis for averages. |
-| 03d_sa_cities.ipynb | Performs sensitivity analysis for city-level analyses. |
-| 99_testing.ipynb | Testing and validation scripts for GEV fitting and coverage analysis. |
-| 99_other_checks.ipynb | Additional validation and quality control checks. |
+| 04a_main_plots.ipynb | Creates Figures 1-4 in the main text. |
+| 04b_si_plots.ipynb | Creates some supplementary figures. |
+| 04c_si_city_checks.ipynb | Creates some supplementary figures, focused on select locations. |
+| 05_gev_evals.ipynb | Performs the GEV fit evaluations. |
+| 99_additional_checks.ipynb | Additional validation and quality control checks. |
+| 99_misc_figs.ipynb | Other figs, used in presentations. |
