@@ -1,4 +1,4 @@
-# conus_comparison_lafferty-etal-2025
+# conus_comparison_lafferty-etal-2026
 
 **Varying sources of uncertainty in risk-relevant hazard projections across the United States**
 
@@ -15,7 +15,7 @@
 \* corresponding author:  `dcl257@cornell.edu`
 
 ## Abstract
-Physical climate risk assessment requires understanding how different sources of uncertainty affect hazard projections, yet these uncertainties can manifest differently across use-cases. Here, we combine three state-of-the-art downscaled climate ensembles to characterize how different uncertainties affect projections of several temperature- and precipitation-based risk metrics across the contiguous United States. We focus on long-term trends of aggregate indices as well as the intensity of rare events with 10- to 100-year return periods. By leveraging new downscaled initial condition ensembles, we characterize the role of internal variability at local scales and estimate its importance relative to other sources of uncertainty. Our results demonstrate systematic differences in patterns of uncertainty between average and extreme indices, across recurrence intervals, and between temperature- and precipitation-derived variables. We show that temperature metrics are more sensitive to the choice of emissions scenario and Earth system model, while internal variability is often dominant for precipitation-based metrics. Additionally, we find that the statistical uncertainty from extreme value distribution fitting can often exceed climate-related uncertainties, particularly at recurrence intervals of 50 years or longer. Our results can provide guidance for researchers and practitioners conducting climate risk assessment.
+Physical climate risk assessment requires understanding how different sources of uncertainty affect hazard projections. However, the relative importance of these uncertainties can differ across end-uses. Here, we combine three state-of-the-art downscaled climate model ensembles to characterize how different uncertainties affect projections of several temperature- and precipitation-based risk metrics across the contiguous United States. We focus on long-term trends of aggregate indices as well as the intensity of rare events with 10- to 100-year return periods. By including new downscaled initial condition ensembles, we characterize the role and relative importance of internal variability at local scales. Our results demonstrate systematic differences in patterns of uncertainty between average and extreme indices, across recurrence intervals, and between temperature- and precipitation-derived metrics. We show that temperature metrics are more sensitive to the choice of emissions scenario and Earth system model, while internal variability can be dominant for precipitation-based metrics. Additionally, we find that the statistical uncertainty from extreme value distribution fitting can often exceed climate-related factors, particularly at recurrence intervals of 50 years or longer. These results highlight the challenge of providing general guidance for climate impacts assessment and the need to consider a wide variety of potential uncertainties when quantifying climate risk.
 
 ## Journal reference
 TBD
@@ -34,7 +34,6 @@ TBD
 | Livneh-unsplit | https://cirrus.ucsd.edu/~pierce/nonsplit_precip/ | https://doi.org/10.1175/JHM-D-20-0212.1 | Training data for LOCA2, used for SI figures only. |
 | GMET | https://doi.org/10.5065/D6TH8JR2 | https://doi.org/10.1175/JHM-D-15-0026.1 | Training data for GARD-LENS, used for SI figures only. |
 | NClimGrid-Daily | https://doi.org/10.25921/c4gt-r169 | https://doi.org/10.1175/JTECH-D-22-0024.1 | Training data for STAR-ESDM, used for SI figures only. |
-| TGW | https://tgw-data.msdlive.org/ | https://doi.org/10.1038/s41597-023-02485-5 | Used for SI figures only. |
 
 ### Output data
 TBD
